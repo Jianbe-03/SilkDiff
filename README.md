@@ -6,10 +6,115 @@ SilkDiff lets you export your entire Roblox game to your local machine, then pus
 
 ---
 
+## Installation
+
+SilkDiff ships as a standalone binary — **no Python, no dependencies required.**
+
+### macOS / Linux
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SilkDiff/SilkDiff/main/install.sh | bash
+```
+
+To install a specific version:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SilkDiff/SilkDiff/main/install.sh | bash -s -- v0.1.0
+```
+
+To uninstall:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/SilkDiff/SilkDiff/main/install.sh | bash -s -- --uninstall
+```
+
+### Windows (PowerShell)
+
+```powershell
+irm https://raw.githubusercontent.com/SilkDiff/SilkDiff/main/install.ps1 | iex
+```
+
+To install a specific version:
+
+```powershell
+.\install.ps1 -Version v0.1.0
+```
+
+To uninstall:
+
+```powershell
+.\install.ps1 -Uninstall
+```
+
+### What the installer does
+
+| Step | macOS/Linux | Windows |
+|------|-------------|---------|
+| Downloads | `silk-<os>-<arch>.tar.gz` from the latest GitHub Release | `silk-windows-amd64.zip` |
+| Installs to | `~/.local/share/silkdiff/` | `%LOCALAPPDATA%\SilkDiff\` |
+| Adds to PATH | Symlink at `~/.local/bin/silk` + shell profile | `setx PATH` |
+
+> **Supported platforms:** macOS arm64 (Apple Silicon), macOS amd64 (Intel), Linux amd64, Windows amd64.
+
+---
+
+## CLI Reference
+
+```
+silk <command> [flags]
+```
+
+| Command | Flags | Description |
+|---------|-------|-------------|
+| `silk server` | `--host`, `--port`, `--project` | Start the local HTTP server |
+| `silk start` / `silk open` / `silk conn` | same as server | Aliases for `server` |
+| `silk create` | `--Class` *, `--Parent` *, `--Name` | Create a new instance on disk |
+| `silk rename` | `--Instance` *, `--Name` * | Rename an instance |
+| `silk move` | `--Instance` *, `--NewParent` * | Move an instance to a new parent |
+| `silk update` | — | Download and install the latest release |
+| `silk uninstall` | — | Remove SilkDiff from this machine |
+
+\* required flag
+
+### Examples
+
+```bash
+# Start the server pointing at your project folder
+silk server --project /path/to/MyGame
+
+# Create a Script inside ServerScriptService
+silk create --Class Script --Parent ./ServerScriptService --Name PlayerController
+
+# Create a non-script instance (generates properties + attributes + tags, no source file)
+silk create --Class Part --Parent ./Workspace --Name Platform
+
+# Rename an existing instance
+silk rename --Instance ./ServerScriptService/OldName --Name NewName
+
+# Move an instance to a different parent
+silk move --Instance ./ServerScriptService/OldScript --NewParent ./ReplicatedStorage
+
+# Check for and install the latest version
+silk update
+
+# Remove SilkDiff
+silk uninstall
+```
+
+`silk create` supports every Roblox class and pre-fills all default properties for that class automatically.
+
+---
+
 ## Architecture
 
 ```
 SilkDiff/
+├── install.sh                       # One-liner installer for macOS / Linux
+├── install.ps1                      # One-liner installer for Windows
+├── .github/
+│   └── workflows/
+│       └── release.yml              # CI: builds & releases binaries on tag push
+│
 ├── SilkDiffRBLX/                    # Roblox Studio plugin (Pesto-managed)
 │   └── ServerStorage/
 │       └── SilkDiffPlugin/          # Main plugin Script
@@ -17,21 +122,29 @@ SilkDiff/
 │           └── Modules/             # All plugin modules
 │               ├── Signal/          # Custom event system
 │               ├── Settings/        # 8 configurable options
-│               ├── InstanceWatcher/ # Watches game tree for changes
+│               ├── InstanceWatcher/ # Watches 18 game services for changes
 │               ├── Serializer/      # Converts instances to JSON
 │               ├── HttpClient/      # HTTP communication with server
 │               ├── DiffEngine/      # Compares instance states
 │               └── UI/              # Toolbar, Settings panel, Diff viewer
 │
-└── SilkDiffServer/                  # Local Python server
-    ├── main.py                      # Entry point
+└── SilkDiffServer/                  # Python source (compiled into the binary)
+    ├── main.py                      # CLI entry point
     ├── requirements.txt
     └── silk/
         ├── config.py                # Server configuration
         ├── server.py                # HTTP server & endpoints
         ├── file_manager.py          # Read/write instance files
         ├── diff_engine.py           # Generate diffs
-        └── serializer.py            # YAML/JSON conversion
+        ├── serializer.py            # YAML/JSON conversion
+        ├── default_properties.py    # Default properties for every Roblox class
+        └── commands/
+            ├── server.py            # silk server
+            ├── create.py            # silk create
+            ├── rename.py            # silk rename
+            ├── move.py              # silk move
+            ├── update.py            # silk update
+            └── uninstall.py         # silk uninstall
 ```
 
 ## How It Works
@@ -62,20 +175,25 @@ SilkDiff/
 
 ## Quick Start
 
-### 1. Start the local server
+### 1. Install SilkDiff
+
+See the [Installation](#installation) section above for the one-liner commands.
+
+After installation, verify it works:
 
 ```bash
-cd SilkDiffServer
-pip install -r requirements.txt
-python main.py
+silk --version
 ```
 
-Options:
+### 2. Start the local server
+
 ```bash
-python main.py --host 127.0.0.1 --port 6969 --project /path/to/game
+silk server --project /path/to/MyGame
 ```
 
-### 2. Install the plugin
+Defaults to `127.0.0.1:6969` and the current working directory if no flags are given.
+
+### 3. Install the plugin
 
 The plugin lives in `SilkDiffRBLX/ServerStorage/SilkDiffPlugin`. Sync it
 into Roblox Studio using Pesto, then export it as a `.rbxm` plugin file,
@@ -111,16 +229,34 @@ All settings are persisted across Studio sessions.
 
 ---
 
-## Building the Server Executable
+## Building & Releasing
 
-To distribute the server as a standalone `.exe`:
+Binaries are built automatically by GitHub Actions whenever a version tag is pushed.
+
+### Release a new version
+
+1. Update `__version__` in `SilkDiffServer/silk/__init__.py`
+2. Commit and tag:
 
 ```bash
-pip install pyinstaller
-pyinstaller --onedir main.py --name silkdiff
+git add SilkDiffServer/silk/__init__.py
+git commit -m "chore: bump version to v0.2.0"
+git tag v0.2.0
+git push && git push --tags
 ```
 
-The executable will be in `dist/silkdiff/`.
+The CI workflow (`.github/workflows/release.yml`) will:
+- Build `silk` for **macOS arm64**, **macOS amd64**, **Linux amd64**, and **Windows amd64**
+- Create a GitHub Release with all 4 artifacts attached
+
+### Build locally (for development)
+
+```bash
+cd SilkDiffServer
+pip install pyinstaller
+pyinstaller --name silk --onedir --clean --noconfirm main.py
+./dist/silk/silk --version
+```
 
 ---
 

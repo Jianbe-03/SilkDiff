@@ -1,3 +1,12 @@
 /SilkDiffRBLX/*
 !/SilkDiffRBLX/ServerStorage/
+
+# Python
 .venv
+__pycache__/
+*.pyc
+
+# PyInstaller build artifacts
+SilkDiffServer/build/
+SilkDiffServer/dist/
+*.spec
