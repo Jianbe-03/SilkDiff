@@ -238,7 +238,7 @@ function UI:_createToolbarButtons()
     -- Pull
     self._buttons.pull = self._toolbar:CreateButton(
         "SilkDiff_Pull", "Pull changes from local machine",
-        "rbxassetid://6031280596", "Pull"
+        "rbxassetid://6031280882", "Pull"
     )
     self._buttons.pull.Click:Connect(function()
         self.onPull:Fire()

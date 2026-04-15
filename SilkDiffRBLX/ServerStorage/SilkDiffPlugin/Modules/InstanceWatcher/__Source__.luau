@@ -30,17 +30,23 @@ InstanceWatcher.__index = InstanceWatcher
 ---------------------------------------------------------------------------
 local WATCHED_SERVICES = {
     "Workspace",
+    "Players",
+    "Lighting",
+    "MaterialService",
+    "ReplicatedFirst",
+    "ReplicatedStorage",
     "ServerScriptService",
     "ServerStorage",
-    "ReplicatedStorage",
-    "ReplicatedFirst",
     "StarterGui",
     "StarterPack",
     "StarterPlayer",
-    "Lighting",
-    "SoundService",
     "Teams",
+    "SoundService",
     "TextChatService",
+    "LocalizationService",
+    "TestService",
+    "VoiceChatService",
+    "VRService",
 }
 
 ---------------------------------------------------------------------------
