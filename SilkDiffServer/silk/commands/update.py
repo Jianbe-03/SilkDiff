@@ -20,7 +20,7 @@ from pathlib import Path
 from silk import __version__
 
 # ── GitHub repository ───────────────────────────────────────────
-GITHUB_REPO = "SilkDiff/SilkDiff"  # owner/repo — update when published
+GITHUB_REPO = "Jianbe-03/SilkDiff"  # owner/repo — update when published
 GITHUB_API_LATEST = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 

@@ -3,7 +3,7 @@
 # SilkDiff Installer — macOS & Linux
 #
 # Usage:
-#   curl -fsSL https://raw.githubusercontent.com/SilkDiff/SilkDiff/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/Jianbe-03/SilkDiff/main/install.sh | bash
 #   curl -fsSL … | bash -s -- v0.2.0          # specific version
 #   curl -fsSL … | bash -s -- --uninstall     # remove
 #
@@ -15,7 +15,7 @@
 # ──────────────────────────────────────────────────────────────────
 set -euo pipefail
 
-REPO="SilkDiff/SilkDiff"
+REPO="Jianbe-03/SilkDiff"
 INSTALL_DIR="${HOME}/.local/share/silkdiff"
 BIN_DIR="${HOME}/.local/bin"
 BINARY_NAME="silk"

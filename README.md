@@ -13,25 +13,25 @@ SilkDiff ships as a standalone binary — **no Python, no dependencies required.
 ### macOS / Linux
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SilkDiff/SilkDiff/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/Jianbe-03/SilkDiff/main/install.sh | bash
 ```
 
 To install a specific version:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SilkDiff/SilkDiff/main/install.sh | bash -s -- v0.1.0
+curl -fsSL https://raw.githubusercontent.com/Jianbe-03/SilkDiff/main/install.sh | bash -s -- v0.1.0
 ```
 
 To uninstall:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/SilkDiff/SilkDiff/main/install.sh | bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/Jianbe-03/SilkDiff/main/install.sh | bash -s -- --uninstall
 ```
 
 ### Windows (PowerShell)
 
 ```powershell
-irm https://raw.githubusercontent.com/SilkDiff/SilkDiff/main/install.ps1 | iex
+irm https://raw.githubusercontent.com/Jianbe-03/SilkDiff/main/install.ps1 | iex
 ```
 
 To install a specific version:

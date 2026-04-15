@@ -2,7 +2,7 @@
 # SilkDiff Installer — Windows (PowerShell)
 #
 # Usage (from PowerShell):
-#   irm https://raw.githubusercontent.com/SilkDiff/SilkDiff/main/install.ps1 | iex
+#   irm https://raw.githubusercontent.com/Jianbe-03/SilkDiff/main/install.ps1 | iex
 #
 # Or save & run with options:
 #   .\install.ps1                      # install latest
@@ -18,7 +18,7 @@ param(
 
 $ErrorActionPreference = "Stop"
 
-$Repo       = "SilkDiff/SilkDiff"
+$Repo       = "Jianbe-03/SilkDiff"
 $InstallDir = Join-Path $env:LOCALAPPDATA "SilkDiff"
 $BinaryName = "silk.exe"
 
