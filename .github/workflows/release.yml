@@ -1,0 +1,129 @@
+# ──────────────────────────────────────────────────────────────────
+# SilkDiff — Build & Release
+#
+# Triggered when a version tag (v*) is pushed.
+# Builds standalone silk binaries for 4 platforms using PyInstaller,
+# then creates a GitHub Release with all artifacts attached.
+#
+#   Platforms:
+#     • macOS ARM64   (Apple Silicon)
+#     • macOS AMD64   (Intel)
+#     • Linux AMD64
+#     • Windows AMD64
+# ──────────────────────────────────────────────────────────────────
+name: Build & Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Build matrix ──────────────────────────────────────────────
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14          # GitHub-hosted ARM64 runner
+            target: macos-arm64
+            ext: tar.gz
+          - os: macos-13          # GitHub-hosted Intel runner
+            target: macos-amd64
+            ext: tar.gz
+          - os: ubuntu-latest     # x86_64
+            target: linux-amd64
+            ext: tar.gz
+          - os: windows-latest    # x86_64
+            target: windows-amd64
+            ext: zip
+
+    runs-on: ${{ matrix.os }}
+    name: Build · ${{ matrix.target }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      # ── Verify tag matches __version__ ────────────────────────
+      - name: Verify version tag
+        shell: bash
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          PKG=$(python -c "import re, pathlib; m=re.search(r'__version__\s*=\s*\"(.+?)\"', pathlib.Path('SilkDiffServer/silk/__init__.py').read_text()); print(m.group(1))")
+          echo "Tag version:     $TAG"
+          echo "Package version: $PKG"
+          if [[ "$TAG" != "$PKG" ]]; then
+            echo "::error::Tag v$TAG does not match silk/__init__.py version $PKG"
+            exit 1
+          fi
+
+      # ── Install build deps ────────────────────────────────────
+      - name: Install dependencies
+        run: |
+          pip install pyinstaller
+          pip install -r SilkDiffServer/requirements.txt
+
+      # ── PyInstaller — onedir build ────────────────────────────
+      - name: Build with PyInstaller
+        run: |
+          cd SilkDiffServer
+          pyinstaller --name silk --onedir --clean --noconfirm main.py
+
+      # ── Smoke test ────────────────────────────────────────────
+      - name: Smoke test
+        shell: bash
+        run: |
+          ./SilkDiffServer/dist/silk/silk --version
+
+      # ── Package (tar.gz for Unix) ─────────────────────────────
+      - name: Package (Unix)
+        if: runner.os != 'Windows'
+        run: |
+          cd SilkDiffServer/dist
+          tar czf silk-${{ matrix.target }}.tar.gz silk/
+
+      # ── Package (zip for Windows) ─────────────────────────────
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          cd SilkDiffServer/dist
+          Compress-Archive -Path silk -DestinationPath silk-${{ matrix.target }}.zip
+
+      # ── Upload artifact ───────────────────────────────────────
+      - uses: actions/upload-artifact@v4
+        with:
+          name: silk-${{ matrix.target }}
+          path: SilkDiffServer/dist/silk-${{ matrix.target }}.${{ matrix.ext }}
+
+  # ── Create GitHub Release ─────────────────────────────────────
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    name: Release
+
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+
+      - name: List artifacts
+        run: ls -lh silk-*
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            silk-macos-arm64.tar.gz
+            silk-macos-amd64.tar.gz
+            silk-linux-amd64.tar.gz
+            silk-windows-amd64.zip
+          generate_release_notes: true
+          draft: false
+          prerelease: false
