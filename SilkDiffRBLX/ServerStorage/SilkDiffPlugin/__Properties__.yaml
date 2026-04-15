@@ -1,0 +1,6 @@
+Archivable: true
+ClassName: Script
+Disabled: false
+Name: SilkDiffPlugin
+Parent: ServerStorage
+RunContext: Plugin

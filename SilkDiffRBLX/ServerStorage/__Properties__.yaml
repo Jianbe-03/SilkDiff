@@ -1,0 +1,6 @@
+Archivable: true
+Capabilities: ""
+ClassName: ServerStorage
+Name: ServerStorage
+Parent: Place2
+Sandboxed: false

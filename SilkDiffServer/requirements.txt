@@ -1,0 +1,2 @@
+# SilkDiff Server dependencies
+PyYAML>=6.0
