@@ -50,6 +50,13 @@ detect_platform() {
         *)              err "Unsupported architecture: $arch"; exit 1 ;;
     esac
 
+    # No hosted Intel Mac runner exists — the ARM64 binary runs on Intel
+    # Macs transparently via Rosetta 2, so map macos-amd64 → macos-arm64.
+    if [[ "$os" == "macos" && "$arch" == "amd64" ]]; then
+        warn "Intel Mac detected — using ARM64 binary (runs via Rosetta 2)."
+        arch="arm64"
+    fi
+
     # Linux ARM64 builds are not provided yet
     if [[ "$os" == "linux" && "$arch" == "arm64" ]]; then
         err "Linux ARM64 is not supported yet. Only amd64 builds are available."

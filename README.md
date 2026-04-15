@@ -54,7 +54,7 @@ To uninstall:
 | Installs to | `~/.local/share/silkdiff/` | `%LOCALAPPDATA%\SilkDiff\` |
 | Adds to PATH | Symlink at `~/.local/bin/silk` + shell profile | `setx PATH` |
 
-> **Supported platforms:** macOS arm64 (Apple Silicon), macOS amd64 (Intel), Linux amd64, Windows amd64.
+> **Supported platforms:** macOS arm64 (Apple Silicon), macOS Intel via Rosetta 2, Linux amd64, Windows amd64.
 
 ---
 

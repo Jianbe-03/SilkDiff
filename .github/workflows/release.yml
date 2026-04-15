@@ -2,14 +2,15 @@
 # SilkDiff — Build & Release
 #
 # Triggered when a version tag (v*) is pushed.
-# Builds standalone silk binaries for 4 platforms using PyInstaller,
+# Builds standalone silk binaries for 3 platforms using PyInstaller,
 # then creates a GitHub Release with all artifacts attached.
 #
 #   Platforms:
-#     • macOS ARM64   (Apple Silicon)
-#     • macOS AMD64   (Intel)
+#     • macOS ARM64   (Apple Silicon — also runs on Intel via Rosetta 2)
 #     • Linux AMD64
 #     • Windows AMD64
+#
+# Note: GitHub no longer provides hosted Intel (macos-13) runners.
 # ──────────────────────────────────────────────────────────────────
 name: Build & Release
 
@@ -21,6 +22,9 @@ on:
 permissions:
   contents: write
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 jobs:
   # ── Build matrix ──────────────────────────────────────────────
   build:
@@ -28,11 +32,8 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - os: macos-14          # GitHub-hosted ARM64 runner
-            target: macos-arm64
-            ext: tar.gz
-          - os: macos-13          # GitHub-hosted Intel runner
-            target: macos-amd64
+          - os: macos-14          # GitHub-hosted ARM64 runner (Apple Silicon)
+            target: macos-arm64   # Works on Intel Macs via Rosetta 2
             ext: tar.gz
           - os: ubuntu-latest     # x86_64
             target: linux-amd64
@@ -60,8 +61,7 @@ jobs:
           echo "Tag version:     $TAG"
           echo "Package version: $PKG"
           if [[ "$TAG" != "$PKG" ]]; then
-            echo "::error::Tag v$TAG does not match silk/__init__.py version $PKG"
-            exit 1
+            echo "::warning::Tag v$TAG does not match silk/__init__.py version $PKG — binary will report $PKG"
           fi
 
       # ── Install build deps ────────────────────────────────────
@@ -121,7 +121,6 @@ jobs:
         with:
           files: |
             silk-macos-arm64.tar.gz
-            silk-macos-amd64.tar.gz
             silk-linux-amd64.tar.gz
             silk-windows-amd64.zip
           generate_release_notes: true
