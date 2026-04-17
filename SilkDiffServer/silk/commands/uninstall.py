@@ -24,6 +24,14 @@ def _get_install_dir() -> Path:
 
 def cmd_uninstall(_args):
     """Remove SilkDiff from the machine."""
+    if not getattr(sys, "frozen", False):
+        installer = os.environ.get("SILKDIFF_DEV_INSTALLER", "./install-local.sh")
+        command_name = os.environ.get("SILKDIFF_DEV_COMMAND", "silk-local")
+        print("[SilkDiff] ⚠ Source/dev install detected.")
+        print(f"[SilkDiff]   This checkout will not be deleted by `silk uninstall`.")
+        print(f"[SilkDiff]   Remove the local launcher with: {installer} --command {command_name} --uninstall")
+        return
+
     print("[SilkDiff] Uninstalling SilkDiff …")
     print()
 

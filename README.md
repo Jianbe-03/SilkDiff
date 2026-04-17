@@ -16,6 +16,14 @@ SilkDiff ships as a standalone binary - **no Python, no dependencies required.**
 curl -fsSL https://raw.githubusercontent.com/Jianbe-03/SilkDiff/main/install.sh | bash
 ```
 
+For a local, user-only dev install from your current checkout:
+
+```bash
+./install-local.sh
+```
+
+That installs a `silk-local` command backed directly by `SilkDiffServer/`, so local code changes are available immediately without creating a release first.
+
 To install a specific version:
 
 ```bash
@@ -26,6 +34,12 @@ To uninstall:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Jianbe-03/SilkDiff/main/install.sh | bash -s -- --uninstall
+```
+
+To remove the local dev launcher:
+
+```bash
+./install-local.sh --uninstall
 ```
 
 ### Windows (PowerShell)

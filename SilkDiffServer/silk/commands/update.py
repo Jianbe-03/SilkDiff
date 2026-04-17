@@ -96,6 +96,12 @@ def _find_asset_url(release: dict, plat: str) -> str | None:
 
 def cmd_update(_args):
     """Check for updates and install the latest binary release."""
+    if not getattr(sys, "frozen", False):
+        print("[SilkDiff] ⚠ Source/dev install detected.")
+        print("[SilkDiff]   `silk update` only works for installed release binaries.")
+        print("[SilkDiff]   Pull the latest code and rerun install-local.sh if needed.")
+        return
+
     print(f"[SilkDiff] Current version: {__version__}")
     print("[SilkDiff] Checking for updates …")
 
