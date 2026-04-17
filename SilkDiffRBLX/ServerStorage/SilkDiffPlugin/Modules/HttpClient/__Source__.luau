@@ -48,15 +48,110 @@ function HttpClient:setConsole(console)
 end
 
 ---------------------------------------------------------------------------
--- Internal: emit a debug log if DebugMode is on
+-- Internal: emit a debug log if DebugMode is on.
+-- kind = "req" | "res" | "err"  controls the colour.
+-- data may be a JSON string – it's pretty-printed line-by-line.
 ---------------------------------------------------------------------------
-function HttpClient:_debug(msg: string)
+function HttpClient:_debug(kind: string, label: string, body: string?)
     if self._settings:get("DebugMode") ~= "true" then return end
-    if self._console then
-        self._console:log(msg, "info")
+
+    -- Header line colour per kind
+    local headerColor, icon
+    if kind == "req" then
+        headerColor = "rgb(100,180,255)"  -- blue  → outgoing request
+        icon        = "→"
+    elseif kind == "res" then
+        headerColor = "rgb(100,220,130)"  -- green → incoming response
+        icon        = "←"
     else
-        print("[SilkDiff DEBUG] " .. msg)
+        headerColor = "rgb(240,100,100)"  -- red   → error
+        icon        = "✗"
     end
+
+    local header = string.format('<font color="%s">%s %s</font>', headerColor, icon, label)
+    if self._console then
+        self._console:logRaw(header)
+    else
+        print("[SilkDiff DEBUG] " .. icon .. " " .. label)
+    end
+
+    -- Pretty-print the JSON body if provided
+    if body and body ~= "" then
+        -- Try to decode and re-encode with indentation via our own pretty-printer
+        local ok, parsed = pcall(function()
+            return game:GetService("HttpService"):JSONDecode(body)
+        end)
+        local lines: { string }
+        if ok then
+            lines = HttpClient._prettyLines(parsed, 0)
+        else
+            -- Not valid JSON – just split on commas/braces for readability
+            lines = { body }
+        end
+        for _, line in ipairs(lines) do
+            local escaped = line
+                :gsub("<", "&lt;")
+                :gsub(">", "&gt;")
+            local colored = string.format('<font color="rgb(190,190,130)">%s</font>', escaped)
+            if self._console then
+                self._console:logRaw(colored)
+            else
+                print("  " .. line)
+            end
+        end
+    end
+end
+
+---------------------------------------------------------------------------
+-- Internal: recursive pretty-printer, returns a list of indented strings
+---------------------------------------------------------------------------
+function HttpClient._prettyLines(val: any, depth: number): { string }
+    local indent  = string.rep("  ", depth)
+    local indent1 = string.rep("  ", depth + 1)
+    local lines: { string } = {}
+
+    if type(val) == "table" then
+        -- Detect array vs dict
+        local isArray = true
+        local maxN = 0
+        for k in pairs(val) do
+            if type(k) ~= "number" then isArray = false; break end
+            if k > maxN then maxN = k end
+        end
+        isArray = isArray and maxN == #val
+
+        if isArray then
+            table.insert(lines, indent .. "[")
+            for _, v in ipairs(val) do
+                local sub = HttpClient._prettyLines(v, depth + 1)
+                for _, sl in ipairs(sub) do table.insert(lines, sl) end
+            end
+            table.insert(lines, indent .. "]")
+        else
+            table.insert(lines, indent .. "{")
+            local keys = {}
+            for k in pairs(val) do table.insert(keys, k) end
+            table.sort(keys, function(a, b) return tostring(a) < tostring(b) end)
+            for _, k in ipairs(keys) do
+                local sub = HttpClient._prettyLines(val[k], depth + 1)
+                if #sub == 1 then
+                    table.insert(lines, indent1 .. tostring(k) .. ": " .. sub[1]:gsub("^%s+", ""))
+                else
+                    table.insert(lines, indent1 .. tostring(k) .. ":")
+                    for _, sl in ipairs(sub) do table.insert(lines, sl) end
+                end
+            end
+            table.insert(lines, indent .. "}")
+        end
+    elseif type(val) == "string" then
+        table.insert(lines, indent .. '"' .. val .. '"')
+    elseif val == nil then
+        table.insert(lines, indent .. "null")
+    else
+        table.insert(lines, indent .. tostring(val))
+    end
+
+    return lines
 end
 
 ---------------------------------------------------------------------------
@@ -73,7 +168,7 @@ function HttpClient:_get(endpoint: string): (boolean, any)
     local base: string = tostring(self:_getBaseUrl())
     local url = base .. endpoint
 
-    self:_debug("GET " .. url)
+    self:_debug("req", "GET " .. url)
 
     local ok, raw = pcall(function()
         return HttpService:GetAsync(url)
@@ -81,11 +176,12 @@ function HttpClient:_get(endpoint: string): (boolean, any)
 
     if not ok then
         warn("[SilkDiff] GET " .. endpoint .. " failed:", raw)
+        self:_debug("err", "GET " .. endpoint .. " failed", tostring(raw))
         self._connected = false
         return false, raw
     end
 
-    self:_debug("GET " .. endpoint .. " → " .. tostring(raw):sub(1, 200))
+    self:_debug("res", "GET " .. endpoint .. " 200", raw)
 
     -- Try to decode JSON; fall back to raw string
     local decodeOk, parsed = pcall(function()
@@ -103,7 +199,7 @@ function HttpClient:_post(endpoint: string, data: any): (boolean, any)
     local url  = base .. endpoint
     local body = HttpService:JSONEncode(data)
 
-    self:_debug("POST " .. endpoint .. " body=" .. body:sub(1, 300))
+    self:_debug("req", "POST " .. endpoint, body)
 
     local ok, raw = pcall(function()
         return HttpService:PostAsync(url, body, Enum.HttpContentType.ApplicationJson)
@@ -111,11 +207,12 @@ function HttpClient:_post(endpoint: string, data: any): (boolean, any)
 
     if not ok then
         warn("[SilkDiff] POST " .. endpoint .. " failed:", raw)
+        self:_debug("err", "POST " .. endpoint .. " failed", tostring(raw))
         self._connected = false
         return false, raw
     end
 
-    self:_debug("POST " .. endpoint .. " → " .. tostring(raw):sub(1, 200))
+    self:_debug("res", "POST " .. endpoint .. " 200", raw)
 
     local decodeOk, parsed = pcall(function()
         return HttpService:JSONDecode(raw)

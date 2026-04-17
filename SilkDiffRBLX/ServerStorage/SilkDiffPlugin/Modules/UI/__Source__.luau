@@ -617,47 +617,41 @@ function UI:showDiff(diffs: { any }, summary: string, onDecision: (boolean) -> (
 
         -- Expandable inline detail panel (property changes + source diff)
         if canExpand then
-            -- Helper: format a property value for display (handles all serialized types)
-            local function propValStr(v: any): string
-                if v == nil then return "nil"
-                elseif type(v) == "string" then return v
-                elseif type(v) == "number" then
-                    -- Round to 3 decimal places to avoid float noise
-                    return tostring(math.floor(v * 1000 + 0.5) / 1000)
-                elseif type(v) == "boolean" then return tostring(v)
-                elseif type(v) == "table" then
-                    -- Vector3: {X=num, Y=num, Z=num}
-                    if type(v.X) == "number" and type(v.Y) == "number" and type(v.Z) == "number" then
-                        return string.format("(%.2f, %.2f, %.2f)", v.X, v.Y, v.Z)
-                    -- Vector2: {X=num, Y=num}
-                    elseif type(v.X) == "number" and type(v.Y) == "number" then
-                        return string.format("(%.2f, %.2f)", v.X, v.Y)
-                    -- Color3: {R=num, G=num, B=num}
-                    elseif type(v.R) == "number" and type(v.G) == "number" and type(v.B) == "number" then
-                        return string.format("rgb(%d, %d, %d)", v.R, v.G, v.B)
-                    -- UDim: {Scale=num, Offset=num}
-                    elseif type(v.Scale) == "number" and type(v.Offset) == "number" then
-                        return string.format("{%.3f, %d}", v.Scale, v.Offset)
-                    -- UDim2: {X={Scale,Offset}, Y={Scale,Offset}}
-                    elseif type(v.X) == "table" and type(v.Y) == "table"
-                        and v.X.Scale ~= nil and v.Y.Scale ~= nil then
+            -- Helper: format a typed property envelope {t=..., v=...} for display
+            local function propValStr(val: any): string
+                if val == nil then return "nil" end
+                -- New typed envelope format
+                if type(val) == "table" and val.t ~= nil then
+                    local t, v = val.t, val.v
+                    if t == "string"   then return tostring(v)
+                    elseif t == "number"  then return tostring(v)
+                    elseif t == "boolean" then return tostring(v)
+                    elseif t == "Enum" or t == "BrickColor" or t == "Instance" or t == "unknown" then
+                        return tostring(v)
+                    elseif t == "Color3" and type(v) == "table" then
+                        return string.format("rgb(%d, %d, %d)", v.R or 0, v.G or 0, v.B or 0)
+                    elseif t == "Vector3" and type(v) == "table" then
+                        return string.format("(%.3f, %.3f, %.3f)", v.X or 0, v.Y or 0, v.Z or 0)
+                    elseif t == "Vector2" and type(v) == "table" then
+                        return string.format("(%.3f, %.3f)", v.X or 0, v.Y or 0)
+                    elseif t == "UDim2" and type(v) == "table" then
+                        local x, y = v.X or {}, v.Y or {}
                         return string.format("{%.3f,%d},{%.3f,%d}",
-                            v.X.Scale, v.X.Offset, v.Y.Scale, v.Y.Offset)
-                    -- CFrame: has Position sub-table
-                    elseif type(v.Position) == "table" then
-                        local p = v.Position
+                            x.Scale or 0, x.Offset or 0, y.Scale or 0, y.Offset or 0)
+                    elseif t == "UDim" and type(v) == "table" then
+                        return string.format("{%.3f,%d}", v.Scale or 0, v.Offset or 0)
+                    elseif t == "CFrame" and type(v) == "table" then
+                        local p = v.Position or {}
                         return string.format("CFrame(%.2f, %.2f, %.2f)", p.X or 0, p.Y or 0, p.Z or 0)
                     else
-                        -- Generic fallback: list key=value pairs (one level deep)
-                        local parts = {}
-                        for k2, v2 in pairs(v) do
-                            table.insert(parts, tostring(k2) .. "=" .. tostring(v2))
-                        end
-                        return "{" .. table.concat(parts, ", ") .. "}"
+                        return tostring(v)
                     end
-                else
-                    return tostring(v)
                 end
+                -- Legacy bare values (fallback)
+                if type(val) == "string" or type(val) == "number" or type(val) == "boolean" then
+                    return tostring(val)
+                end
+                return "?"
             end
 
             -- ── Property changes table (shown above source diff) ─────────────
@@ -863,13 +857,21 @@ function UI:showDiff(diffs: { any }, summary: string, onDecision: (boolean) -> (
     btnLayout.Padding             = UDim.new(0, 8)
     btnLayout.Parent              = btnBar
 
+    -- Guard: ensure onDecision fires exactly once regardless of close path
+    local decided = false
+    local function decide(approved: boolean)
+        if decided then return end
+        decided = true
+        widget.Enabled = false
+        onDecision(approved)
+    end
+
     -- Cancel
     local cancelBtn = self:_button(btnBar, "Cancel", COLORS.danger, {
         size = UDim2.new(0, 120, 0, 32),
     })
     cancelBtn.MouseButton1Click:Connect(function()
-        widget.Enabled = false
-        onDecision(false)
+        decide(false)
     end)
 
     -- Approve
@@ -877,8 +879,16 @@ function UI:showDiff(diffs: { any }, summary: string, onDecision: (boolean) -> (
         size = UDim2.new(0, 120, 0, 32),
     })
     approveBtn.MouseButton1Click:Connect(function()
-        widget.Enabled = false
-        onDecision(true)
+        decide(true)
+    end)
+
+    -- Closing the window via the X button also counts as cancel
+    local closeConn
+    closeConn = widget:GetPropertyChangedSignal("Enabled"):Connect(function()
+        if not widget.Enabled then
+            decide(false)
+            closeConn:Disconnect()
+        end
     end)
 
     -- Show the widget

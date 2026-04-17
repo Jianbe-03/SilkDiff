@@ -189,6 +189,14 @@ function Console:_appendLabel(richLine: string)
 end
 
 ---------------------------------------------------------------------------
+-- Public: log a raw pre-built RichText string (no timestamp, no mirror)
+-- Used by the debug pretty-printer so each JSON line is its own label.
+---------------------------------------------------------------------------
+function Console:logRaw(richLine: string)
+    self:_appendLabel(richLine)
+end
+
+---------------------------------------------------------------------------
 -- Public: log a message at a given level
 -- level = "info" | "success" | "warn" | "error"
 ---------------------------------------------------------------------------

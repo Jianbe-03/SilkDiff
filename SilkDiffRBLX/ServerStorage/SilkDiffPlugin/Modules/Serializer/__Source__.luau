@@ -133,48 +133,62 @@ end
 function Serializer:_serializeValue(value: any): any
     local t = typeof(value)
 
-    if t == "string" or t == "number" or t == "boolean" then
-        return value
+    if t == "string" then
+        return { t = "string",  v = value }
+
+    elseif t == "number" then
+        -- Round to 5 decimal places to avoid floating-point noise
+        return { t = "number",  v = math.floor(value * 1e5 + 0.5) / 1e5 }
+
+    elseif t == "boolean" then
+        return { t = "boolean", v = value }
 
     elseif t == "nil" then
         return nil
 
     elseif t == "Vector3" then
-        return { X = value.X, Y = value.Y, Z = value.Z }
+        return { t = "Vector3", v = {
+            X = math.floor(value.X * 1e5 + 0.5) / 1e5,
+            Y = math.floor(value.Y * 1e5 + 0.5) / 1e5,
+            Z = math.floor(value.Z * 1e5 + 0.5) / 1e5,
+        }}
 
     elseif t == "Vector2" then
-        return { X = value.X, Y = value.Y }
+        return { t = "Vector2", v = {
+            X = math.floor(value.X * 1e5 + 0.5) / 1e5,
+            Y = math.floor(value.Y * 1e5 + 0.5) / 1e5,
+        }}
 
     elseif t == "CFrame" then
         local c = { value:GetComponents() }
-        return {
-            Position = { X = c[1], Y = c[2], Z = c[3] },
-            RightVector  = { X = c[4], Y = c[5], Z = c[6] },
-            UpVector     = { X = c[7], Y = c[8], Z = c[9] },
-            LookVector   = { X = c[10], Y = c[11], Z = c[12] },
-        }
+        return { t = "CFrame", v = {
+            Position   = { X = c[1],  Y = c[2],  Z = c[3]  },
+            RightVector = { X = c[4],  Y = c[5],  Z = c[6]  },
+            UpVector    = { X = c[7],  Y = c[8],  Z = c[9]  },
+            LookVector  = { X = c[10], Y = c[11], Z = c[12] },
+        }}
 
     elseif t == "Color3" then
-        return {
+        return { t = "Color3", v = {
             R = math.round(value.R * 255),
             G = math.round(value.G * 255),
             B = math.round(value.B * 255),
-        }
+        }}
 
     elseif t == "BrickColor" then
-        return value.Name
+        return { t = "BrickColor", v = value.Name }
 
     elseif t == "UDim2" then
-        return {
+        return { t = "UDim2", v = {
             X = { Scale = value.X.Scale, Offset = value.X.Offset },
             Y = { Scale = value.Y.Scale, Offset = value.Y.Offset },
-        }
+        }}
 
     elseif t == "UDim" then
-        return { Scale = value.Scale, Offset = value.Offset }
+        return { t = "UDim", v = { Scale = value.Scale, Offset = value.Offset } }
 
     elseif t == "EnumItem" then
-        return tostring(value)
+        return { t = "Enum", v = tostring(value) }
 
     elseif t == "Instance" then
         -- Represent instance references as their path
@@ -184,11 +198,10 @@ function Serializer:_serializeValue(value: any): any
             table.insert(parts, 1, current.Name)
             current = current.Parent
         end
-        return table.concat(parts, ".")
+        return { t = "Instance", v = table.concat(parts, ".") }
 
     else
-        -- Fallback: stringify anything we don't recognise
-        return tostring(value)
+        return { t = "unknown", v = tostring(value) }
     end
 end
 

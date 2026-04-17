@@ -142,7 +142,19 @@ function InstanceWatcher:_watchInstance(instance: Instance)
 
     -- Removed children
     local removeConn = instance.ChildRemoved:Connect(function(child: Instance)
-        self:_recordChange(instance, "ChildRemoved", child.Name)
+        -- Capture path NOW before the parent reference is cleared
+        local childPath = self.getInstancePath(self, child)
+        -- Defer one frame: if Parent is nil the child was truly deleted,
+        -- otherwise it was just reparented (moved) elsewhere.
+        task.defer(function()
+            if child.Parent == nil then
+                -- Genuinely deleted – record on the parent so it shows in diffs
+                self:_recordChange(instance, "ChildDeleted", childPath)
+            else
+                -- Reparented/moved – record as moved on the child's new parent
+                self:_recordChange(child.Parent :: Instance, "ChildMoved", childPath)
+            end
+        end)
     end)
     table.insert(self._connections, removeConn)
 end

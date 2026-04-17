@@ -21,8 +21,64 @@ class DiffEngine:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _typed_equal(a: Any, b: Any) -> bool:
+        """Compare two typed property envelopes {t, v}.
+        Falls back to string comparison for legacy bare values."""
+        # Both are typed envelopes
+        if isinstance(a, dict) and "t" in a and isinstance(b, dict) and "t" in b:
+            if a["t"] != b["t"]:
+                return False
+            t = a["t"]
+            av, bv = a.get("v"), b.get("v")
+            if t == "number":
+                # Allow a tiny epsilon for floating-point noise
+                try:
+                    return abs(float(av) - float(bv)) < 1e-4
+                except (TypeError, ValueError):
+                    pass
+            if t in ("Vector3", "Vector2"):
+                if isinstance(av, dict) and isinstance(bv, dict):
+                    axes = ("X", "Y", "Z") if t == "Vector3" else ("X", "Y")
+                    return all(
+                        abs(float(av.get(ax, 0)) - float(bv.get(ax, 0))) < 1e-4
+                        for ax in axes
+                    )
+            if t == "Color3":
+                if isinstance(av, dict) and isinstance(bv, dict):
+                    return (av.get("R") == bv.get("R") and
+                            av.get("G") == bv.get("G") and
+                            av.get("B") == bv.get("B"))
+            # For everything else (string, boolean, Enum, BrickColor, Instance…)
+            return av == bv
+        # Legacy / mixed: fall back to string comparison
+        return str(a) == str(b)
+
+    @staticmethod
+    def _typed_display(val: Any) -> str:
+        """Human-readable string for a typed property value."""
+        if isinstance(val, dict) and "t" in val:
+            t, v = val["t"], val.get("v")
+            if t == "Color3" and isinstance(v, dict):
+                return f"rgb({v.get('R')}, {v.get('G')}, {v.get('B')})"
+            if t in ("Vector3",) and isinstance(v, dict):
+                return f"({v.get('X'):.3f}, {v.get('Y'):.3f}, {v.get('Z'):.3f})"
+            if t in ("Vector2",) and isinstance(v, dict):
+                return f"({v.get('X'):.3f}, {v.get('Y'):.3f})"
+            if t == "UDim2" and isinstance(v, dict):
+                x, y = v.get("X", {}), v.get("Y", {})
+                return (f"{{{x.get('Scale')},{x.get('Offset')}}},"
+                        f"{{{y.get('Scale')},{y.get('Offset')}}}")
+            if t == "UDim" and isinstance(v, dict):
+                return f"{{{v.get('Scale')},{v.get('Offset')}}}"
+            if t == "CFrame" and isinstance(v, dict):
+                p = v.get("Position", {})
+                return f"CFrame({p.get('X'):.2f},{p.get('Y'):.2f},{p.get('Z'):.2f})"
+            return str(v)
+        return str(val)
+
+    @staticmethod
     def compare_properties(old: dict, new: dict) -> dict:
-        """Compare two flat key→value dicts.
+        """Compare two flat key→typed-value dicts.
         Returns ``{key: {old, new, changeType}}`` for every difference."""
         changes: dict[str, dict[str, Any]] = {}
         all_keys = set(old) | set(new)
@@ -35,7 +91,7 @@ class DiffEngine:
                 changes[key] = {"old": None, "new": new_val, "changeType": "added"}
             elif old_val is not None and new_val is None:
                 changes[key] = {"old": old_val, "new": None, "changeType": "removed"}
-            elif str(old_val) != str(new_val):
+            elif not DiffEngine._typed_equal(old_val, new_val):
                 changes[key] = {"old": old_val, "new": new_val, "changeType": "modified"}
 
         return changes
