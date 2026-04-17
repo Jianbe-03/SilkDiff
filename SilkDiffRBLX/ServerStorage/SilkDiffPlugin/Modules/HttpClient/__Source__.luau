@@ -36,7 +36,27 @@ function HttpClient.new(settings)
     local self = setmetatable({}, HttpClient)
     self._settings  = settings
     self._connected = false
+    self._console   = nil  -- set later via :setConsole() to avoid circular deps
     return self
+end
+
+---------------------------------------------------------------------------
+-- Inject a Console instance for debug logging (called after both are init'd)
+---------------------------------------------------------------------------
+function HttpClient:setConsole(console)
+    self._console = console
+end
+
+---------------------------------------------------------------------------
+-- Internal: emit a debug log if DebugMode is on
+---------------------------------------------------------------------------
+function HttpClient:_debug(msg: string)
+    if self._settings:get("DebugMode") ~= "true" then return end
+    if self._console then
+        self._console:log(msg, "info")
+    else
+        print("[SilkDiff DEBUG] " .. msg)
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -53,6 +73,8 @@ function HttpClient:_get(endpoint: string): (boolean, any)
     local base: string = tostring(self:_getBaseUrl())
     local url = base .. endpoint
 
+    self:_debug("GET " .. url)
+
     local ok, raw = pcall(function()
         return HttpService:GetAsync(url)
     end)
@@ -62,6 +84,8 @@ function HttpClient:_get(endpoint: string): (boolean, any)
         self._connected = false
         return false, raw
     end
+
+    self:_debug("GET " .. endpoint .. " → " .. tostring(raw):sub(1, 200))
 
     -- Try to decode JSON; fall back to raw string
     local decodeOk, parsed = pcall(function()
@@ -79,6 +103,8 @@ function HttpClient:_post(endpoint: string, data: any): (boolean, any)
     local url  = base .. endpoint
     local body = HttpService:JSONEncode(data)
 
+    self:_debug("POST " .. endpoint .. " body=" .. body:sub(1, 300))
+
     local ok, raw = pcall(function()
         return HttpService:PostAsync(url, body, Enum.HttpContentType.ApplicationJson)
     end)
@@ -88,6 +114,8 @@ function HttpClient:_post(endpoint: string, data: any): (boolean, any)
         self._connected = false
         return false, raw
     end
+
+    self:_debug("POST " .. endpoint .. " → " .. tostring(raw):sub(1, 200))
 
     local decodeOk, parsed = pcall(function()
         return HttpService:JSONDecode(raw)
@@ -117,10 +145,16 @@ function HttpClient:push(data: any): (boolean, any)
 end
 
 ---------------------------------------------------------------------------
--- Pull changes from local machine → Roblox
+-- Pull changes from local machine → Roblox.
+-- Pass the serialized current Roblox state so the server can compute
+-- a proper diff (local files vs Roblox) and return diff entries.
 ---------------------------------------------------------------------------
-function HttpClient:pull(): (boolean, any)
-    return self:_get("/api/pull")
+function HttpClient:pull(robloxState: { any }): (boolean, any)
+    return self:_post("/api/pull", {
+        action    = "pull",
+        timestamp = os.time(),
+        data      = robloxState,
+    })
 end
 
 ---------------------------------------------------------------------------

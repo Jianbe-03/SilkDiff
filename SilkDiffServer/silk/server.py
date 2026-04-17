@@ -66,6 +66,7 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
     def do_POST(self):  # noqa: N802
         routes = {
             "/api/push": self._handle_push,
+            "/api/pull": self._handle_pull,
             "/api/diff": self._handle_diff,
             "/api/export": self._handle_export,
             "/api/confirm": self._handle_confirm,
@@ -118,20 +119,67 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": str(exc)})
 
     def _handle_pull(self):
-        """GET /api/pull - read all local instances."""
+        """GET or POST /api/pull
+
+        GET  – returns raw local instances (no diff computed).
+        POST – accepts current Roblox state in body.data, computes a diff
+               of (roblox_current vs local_files) and returns diff entries
+               so the plugin can show exactly what would change.
+        """
         try:
-            paths = self.file_manager.get_all_instance_paths()
-            instances = []
-            for p in paths:
-                inst = self.file_manager.read_instance(p)
+            # Read local file map once
+            local_map: dict = {}
+            for path in self.file_manager.get_all_instance_paths():
+                inst = self.file_manager.read_instance(path)
                 if inst:
-                    instances.append(inst)
+                    local_map[path] = inst
+
+            # GET – plain list, no diff
+            if self.command == "GET":
+                self._send_json(200, {
+                    "status": "ok",
+                    "data": list(local_map.values()),
+                    "entries": [],
+                    "count": len(local_map),
+                })
+                return
+
+            # POST – flatten incoming Roblox tree and compute diffs
+            body = self._read_body()
+            roblox_trees = body.get("data", [])
+
+            roblox_map: dict = {}
+
+            def _flatten(tree: dict) -> None:
+                if not tree:
+                    return
+                path = tree.get("path", "")
+                if path:
+                    roblox_map[path] = tree
+                for child in tree.get("children", []):
+                    _flatten(child)
+
+            for svc_tree in roblox_trees:
+                _flatten(svc_tree)
+
+            # old = roblox, new = local  →  "added" means local has it, Roblox doesn't
+            diffs = []
+            for path in sorted(set(roblox_map) | set(local_map)):
+                diff = self.diff_engine.compare_instances(
+                    roblox_map.get(path),
+                    local_map.get(path),
+                )
+                if diff:
+                    diffs.append(diff)
+
+            summary = self.diff_engine.summarize(diffs)
 
             self._send_json(200, {
                 "status": "ok",
-                "data": instances,
-                "diffs": [],  # populated when compared with Roblox state
-                "count": len(instances),
+                "entries": diffs,
+                "summary": summary,
+                "instances": list(local_map.values()),
+                "count": len(diffs),
             })
         except Exception as exc:
             self._send_json(500, {"error": str(exc)})
@@ -145,8 +193,14 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
             diffs = []
             for roblox_item in roblox_items:
                 inst = roblox_item.get("instance", roblox_item)
-                path = inst.get("path", "")
-                local_inst = self.file_manager.read_instance(path)
+
+                # Prefer SilkDiffId-based lookup (survives renames / moves)
+                silk_id = inst.get("silkId") or (inst.get("attributes") or {}).get("SilkDiffId")
+                if silk_id:
+                    local_path = self.file_manager.find_by_silk_id(silk_id)
+                    local_inst = self.file_manager.read_instance(local_path) if local_path else None
+                else:
+                    local_inst = self.file_manager.read_instance(inst.get("path", ""))
 
                 diff = self.diff_engine.compare_instances(local_inst, inst)
                 if diff:
@@ -164,10 +218,13 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": str(exc)})
 
     def _handle_export(self):
-        """POST /api/export - full game export."""
+        """POST /api/export - full game export (wipes + rebuilds)."""
         try:
             body = self._read_body()
             services = body.get("data", [])
+
+            # Wipe existing service folders so this is a clean rebuild
+            self.file_manager.clear_service_roots(services)
 
             total = 0
             for tree in services:
@@ -176,7 +233,7 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
 
             self._send_json(200, {
                 "status": "ok",
-                "message": f"Exported {total} instance(s)",
+                "message": f"Exported {total} instance(s) (full rebuild)",
                 "written": total,
             })
         except Exception as exc:

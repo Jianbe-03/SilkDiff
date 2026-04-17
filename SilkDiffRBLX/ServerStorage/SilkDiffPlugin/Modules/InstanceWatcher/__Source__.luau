@@ -103,6 +103,17 @@ function InstanceWatcher:_recordChange(instance: Instance, changeType: string, d
 end
 
 ---------------------------------------------------------------------------
+-- Internal: Mark a newly-added instance (and all its descendants) as
+-- changed so they appear in the diff as "added" entries.
+---------------------------------------------------------------------------
+function InstanceWatcher:_recordNewInstance(instance: Instance)
+    self:_recordChange(instance, "Added", nil)
+    for _, descendant in ipairs(instance:GetDescendants()) do
+        self:_recordChange(descendant, "Added", nil)
+    end
+end
+
+---------------------------------------------------------------------------
 -- Internal: Hook up change listeners on a single instance
 ---------------------------------------------------------------------------
 function InstanceWatcher:_watchInstance(instance: Instance)
@@ -121,6 +132,8 @@ function InstanceWatcher:_watchInstance(instance: Instance)
     -- New children
     local addConn = instance.ChildAdded:Connect(function(child: Instance)
         self:_recordChange(instance, "ChildAdded", child.Name)
+        -- Record the new child (and its descendants) so they appear in the diff
+        self:_recordNewInstance(child)
         -- Also start watching the new child + its descendants
         self:_watchInstance(child)
         self:_watchDescendants(child)
@@ -165,7 +178,7 @@ function InstanceWatcher:startWatching()
         end
     end
 
-    print("[SilkDiff] InstanceWatcher started — watching " .. #WATCHED_SERVICES .. " services")
+    print("[SilkDiff] InstanceWatcher started - watching " .. #WATCHED_SERVICES .. " services")
 end
 
 ---------------------------------------------------------------------------

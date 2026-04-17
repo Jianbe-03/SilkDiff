@@ -154,6 +154,36 @@ class FileManager:
         return result
 
     # ------------------------------------------------------------------
+    # Export helpers
+    # ------------------------------------------------------------------
+
+    def clear_service_roots(self, trees: list) -> None:
+        """Delete the top-level folder for each exported service tree so the
+        next write is a clean rebuild rather than a partial overwrite."""
+        for tree in trees:
+            path = tree.get("path", "")
+            if not path:
+                continue
+            root_name = path.split(".")[0]
+            directory = self.project_dir / root_name
+            if directory.exists():
+                shutil.rmtree(directory)
+
+    # ------------------------------------------------------------------
+    # ID-based lookup
+    # ------------------------------------------------------------------
+
+    def find_by_silk_id(self, silk_id: str) -> Optional[str]:
+        """Scan all instance directories for the one whose attributes contain
+        ``SilkDiffId == silk_id``.  Returns the dot-separated path, or None."""
+        for path in self.get_all_instance_paths():
+            inst = self.read_instance(path)
+            if inst and isinstance(inst.get("attributes"), dict):
+                if inst["attributes"].get("SilkDiffId") == silk_id:
+                    return path
+        return None
+
+    # ------------------------------------------------------------------
     # deletion
     # ------------------------------------------------------------------
 

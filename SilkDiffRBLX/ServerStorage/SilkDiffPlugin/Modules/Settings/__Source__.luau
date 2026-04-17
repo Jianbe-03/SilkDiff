@@ -44,6 +44,9 @@ local DEFAULTS = {
     AttributesFileName = "__Attributes__",
     TagsFileName       = "__Tags__",
     SourceFileName     = "__Source__",
+    UseInstanceIds     = "true",   -- track instances by SilkDiffId attribute instead of path
+    UseConsole         = "true",   -- route all logs to the SilkDiff console instead of Studio Output
+    DebugMode          = "false",  -- log raw HTTP request/response bodies to the console
 }
 
 ---------------------------------------------------------------------------
@@ -52,6 +55,9 @@ local DEFAULTS = {
 local VALID_CHOICES = {
     PropertiesExtension = { ".yaml", ".json" },
     SourceExtension     = { ".luau", ".lua", ".txt" },
+    UseInstanceIds      = { "false", "true" },
+    UseConsole          = { "false", "true" },
+    DebugMode           = { "false", "true" },
 }
 
 ---------------------------------------------------------------------------
@@ -66,6 +72,9 @@ local SETTING_LABELS = {
     AttributesFileName = "Attributes File Name",
     TagsFileName       = "Tags File Name",
     SourceFileName     = "Source File Name",
+    UseInstanceIds     = "Track Instances by ID",
+    UseConsole         = "Use SilkDiff Console (suppress Studio Output)",
+    DebugMode          = "Debug Mode (log HTTP traffic)",
 }
 
 --- The display order of settings in the UI
@@ -78,6 +87,9 @@ local SETTING_ORDER = {
     "AttributesFileName",
     "TagsFileName",
     "SourceFileName",
+    "UseInstanceIds",
+    "UseConsole",
+    "DebugMode",
 }
 
 ---------------------------------------------------------------------------

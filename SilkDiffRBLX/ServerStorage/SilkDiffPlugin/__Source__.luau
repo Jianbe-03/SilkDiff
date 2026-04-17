@@ -13,7 +13,7 @@
         4. You review the diff in the Diff Viewer and approve or cancel
         5. On approval the server writes the changes to disk
 
-    The same works in reverse with "Pull" — local file changes are
+    The same works in reverse with "Pull" - local file changes are
     diffed against the current Roblox state and applied on approval.
 
     Modules (under Modules/):
@@ -24,6 +24,8 @@
         HttpClient      – Talks to the local SilkDiff Python server
         DiffEngine      – Compares two states and produces diff entries
         UI              – Toolbar, Settings panel, Diff Viewer
+        Popup           – Simple modal confirmation dialog
+        Console         – Docked RichText output panel (replaces print spam)
 ]]
 
 ---------------------------------------------------------------------------
@@ -41,6 +43,8 @@ local Serializer      = require(Modules:WaitForChild("Serializer"))
 local HttpClient      = require(Modules:WaitForChild("HttpClient"))
 local DiffEngine      = require(Modules:WaitForChild("DiffEngine"))
 local UI              = require(Modules:WaitForChild("UI"))
+local Popup           = require(Modules:WaitForChild("Popup"))
+local Console         = require(Modules:WaitForChild("Console"))
 
 ---------------------------------------------------------------------------
 -- Initialise everything
@@ -51,8 +55,52 @@ local serializer      = Serializer.new(settings)
 local diffEngine      = DiffEngine.new()
 local instanceWatcher = InstanceWatcher.new()
 local ui              = UI.new(plugin, toolbar, settings)
+local popup           = Popup.new(plugin)
+local console         = Console.new(plugin, toolbar, settings)
 
-print("[SilkDiff] Plugin loaded!")
+-- Now that console exists, give HttpClient a reference for debug logging
+httpClient:setConsole(console)
+
+-- Helper: serialize all watched services → tree list (for pull payload)
+local function serializeCurrentState(): { any }
+    local trees = {}
+    for _, serviceName in ipairs(instanceWatcher:getWatchedServices()) do
+        local ok, service = pcall(function()
+            return game:GetService(serviceName)
+        end)
+        if ok and service then
+            table.insert(trees, serializer:serializeTree(service))
+        end
+    end
+    return trees
+end
+
+-- Helper: flatten a serialized tree into a list of individual instance nodes
+-- (the server's /api/diff and /api/push both accept flat lists)
+local function flattenTree(tree: { any }, out: { any }?): { any }
+    out = out or {}
+    -- Strip children before inserting so we send leaf-level data cleanly
+    local node = {}
+    for k, v in pairs(tree) do
+        if k ~= "children" then node[k] = v end
+    end
+    table.insert(out, node)
+    for _, child in ipairs(tree.children or {}) do
+        flattenTree(child, out)
+    end
+    return out
+end
+
+-- Flatten all service trees into one list
+local function flatCurrentState(): { any }
+    local flat = {}
+    for _, tree in ipairs(serializeCurrentState()) do
+        flattenTree(tree, flat)
+    end
+    return flat
+end
+
+console:log("SilkDiff plugin loaded", "info")
 
 ---------------------------------------------------------------------------
 -- PUSH  (Roblox → Local Machine)
@@ -66,14 +114,14 @@ print("[SilkDiff] Plugin loaded!")
 ui.onPush:Connect(function()
     -- Verify server connection
     if not httpClient:ping() then
-        ui:showNotification("Cannot reach SilkDiff server at " .. settings:getServerUrl())
+        console:log("Cannot reach SilkDiff server at " .. settings:getServerUrl(), "error")
         return
     end
 
     -- Collect changes
     local changes = instanceWatcher:getChangedInstances()
     if #changes == 0 then
-        ui:showNotification("No changes to push.")
+        console:log("No changes to push.", "info")
         return
     end
 
@@ -83,7 +131,7 @@ ui.onPush:Connect(function()
     -- Request a diff from the server
     local ok, diff = httpClient:requestDiff(serializedChanges)
     if not ok then
-        ui:showNotification("Diff request failed: " .. tostring(diff))
+        console:log("Diff request failed: " .. tostring(diff), "error")
         return
     end
 
@@ -96,12 +144,61 @@ ui.onPush:Connect(function()
             local pushOk, pushResult = httpClient:push(serializedChanges)
             if pushOk then
                 instanceWatcher:clearChanges()
-                ui:showNotification("✓ Changes pushed successfully!")
+                console:log("Changes pushed successfully!", "success")
             else
-                ui:showNotification("✗ Push failed: " .. tostring(pushResult))
+                console:log("Push failed: " .. tostring(pushResult), "error")
             end
         else
-            ui:showNotification("Push cancelled.")
+            console:log("Push cancelled.", "warn")
+        end
+    end)
+end)
+
+---------------------------------------------------------------------------
+-- FORCE PUSH  (Compare entire Roblox state against local files → push)
+--
+-- Unlike Push (which only sends watcher-tracked changes), Force Push
+-- serializes the *whole* current Roblox game, diffs it against whatever
+-- is on disk, and lets you push every difference. This is the correct
+-- flow when teammates made changes while your machine was off — the
+-- watcher would have missed those events, but Force Push sees them all.
+---------------------------------------------------------------------------
+ui.onForcePush:Connect(function()
+    if not httpClient:ping() then
+        console:log("Cannot reach SilkDiff server at " .. settings:getServerUrl(), "error")
+        return
+    end
+
+    console:log("Force Push: serializing entire Roblox state…", "info")
+    local flat = flatCurrentState()
+    console:log(string.format("Force Push: %d instances — computing diff…", #flat), "info")
+
+    local ok, diff = httpClient:requestDiff(flat)
+    if not ok then
+        console:log("Force Push diff failed: " .. tostring(diff), "error")
+        return
+    end
+
+    local entries = diff.entries or diff
+    local summary = diffEngine:summarize(entries)
+
+    if #entries == 0 then
+        console:log("Force Push: local files already match Roblox. Nothing to push.", "success")
+        return
+    end
+
+    console:log("Force Push diff ready: " .. summary, "info")
+    ui:showDiff(entries, "Force Push: " .. summary, function(approved)
+        if approved then
+            local pushOk, pushResult = httpClient:push(flat)
+            if pushOk then
+                instanceWatcher:clearChanges()
+                console:log("Force Push complete! " .. summary, "success")
+            else
+                console:log("Force Push failed: " .. tostring(pushResult), "error")
+            end
+        else
+            console:log("Force Push cancelled.", "warn")
         end
     end)
 end)
@@ -115,34 +212,38 @@ end)
 ---------------------------------------------------------------------------
 ui.onPull:Connect(function()
     if not httpClient:ping() then
-        ui:showNotification("Cannot reach SilkDiff server at " .. settings:getServerUrl())
+        console:log("Cannot reach SilkDiff server at " .. settings:getServerUrl(), "error")
         return
     end
 
-    local ok, data = httpClient:pull()
+    console:log("Serializing current Roblox state for pull diff…", "info")
+    local robloxState = serializeCurrentState()
+
+    local ok, data = httpClient:pull(robloxState)
     if not ok then
-        ui:showNotification("Pull failed: " .. tostring(data))
+        console:log("Pull failed: " .. tostring(data), "error")
         return
     end
 
-    local diffs   = data.diffs or {}
-    local summary = diffEngine:summarize(diffs)
+    local entries = data.entries or data.diffs or {}
+    local summary = diffEngine:summarize(entries)
 
-    if #diffs == 0 then
-        ui:showNotification("Everything is up to date — nothing to pull.")
+    if #entries == 0 then
+        console:log("Everything is up to date — nothing to pull.", "success")
         return
     end
 
-    ui:showDiff(diffs, "Pull: " .. summary, function(approved)
+    console:log("Pull diff ready: " .. summary, "info")
+    ui:showDiff(entries, "Pull: " .. summary, function(approved)
         if approved then
             local confirmOk, confirmResult = httpClient:confirmDiff(data)
             if confirmOk then
-                ui:showNotification("✓ Changes pulled successfully!")
+                console:log("Changes pulled successfully!", "success")
             else
-                ui:showNotification("✗ Pull apply failed: " .. tostring(confirmResult))
+                console:log("Pull apply failed: " .. tostring(confirmResult), "error")
             end
         else
-            ui:showNotification("Pull cancelled.")
+            console:log("Pull cancelled.", "warn")
         end
     end)
 end)
@@ -154,31 +255,41 @@ end)
 ---------------------------------------------------------------------------
 ui.onExport:Connect(function()
     if not httpClient:ping() then
-        ui:showNotification("Cannot reach SilkDiff server at " .. settings:getServerUrl())
+        console:log("Cannot reach SilkDiff server at " .. settings:getServerUrl(), "error")
         return
     end
 
-    ui:showNotification("Exporting game — this may take a moment …")
+    -- Ask for confirmation — export wipes the entire local tree first
+    popup:show(
+        "⚠  Full Export",
+        "This will DELETE all existing local files and do a full rebuild from Roblox.\n\nMake sure any local-only changes are backed up first!",
+        function()
+            -- Confirmed — proceed
+            console:log("Exporting game — this may take a moment…", "warn")
 
-    local watchedServices = instanceWatcher:getWatchedServices()
-    local exportData = {}
+            local watchedServices = instanceWatcher:getWatchedServices()
+            local exportData = {}
+            for _, serviceName in ipairs(watchedServices) do
+                local ok2, service = pcall(function()
+                    return game:GetService(serviceName)
+                end)
+                if ok2 and service then
+                    table.insert(exportData, serializer:serializeTree(service))
+                end
+            end
 
-    for _, serviceName in ipairs(watchedServices) do
-        local ok, service = pcall(function()
-            return game:GetService(serviceName)
-        end)
-        if ok and service then
-            table.insert(exportData, serializer:serializeTree(service))
+            local exportOk, result = httpClient:fullExport(exportData)
+            if exportOk then
+                instanceWatcher:clearChanges()
+                console:log("Game exported successfully! (" .. #exportData .. " services)", "success")
+            else
+                console:log("Export failed: " .. tostring(result), "error")
+            end
+        end,
+        function()
+            console:log("Export cancelled.", "info")
         end
-    end
-
-    local exportOk, result = httpClient:fullExport(exportData)
-    if exportOk then
-        instanceWatcher:clearChanges()
-        ui:showNotification("✓ Game exported successfully!")
-    else
-        ui:showNotification("✗ Export failed: " .. tostring(result))
-    end
+    )
 end)
 
 ---------------------------------------------------------------------------
@@ -192,5 +303,7 @@ instanceWatcher:startWatching()
 plugin.Unloading:Connect(function()
     instanceWatcher:stopWatching()
     ui:destroy()
+    popup:destroy()
+    console:destroy()
     print("[SilkDiff] Plugin unloaded.")
 end)

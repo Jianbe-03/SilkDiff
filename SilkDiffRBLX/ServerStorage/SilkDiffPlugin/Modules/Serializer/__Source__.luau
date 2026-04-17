@@ -193,6 +193,22 @@ function Serializer:_serializeValue(value: any): any
 end
 
 ---------------------------------------------------------------------------
+-- Ensure an instance has a SilkDiffId attribute when UseInstanceIds is on.
+-- Returns the existing or newly-assigned ID, or nil when the feature is off.
+---------------------------------------------------------------------------
+function Serializer:_ensureSilkDiffId(instance: Instance): string?
+    local enabled = self._settings:get("UseInstanceIds")
+    if enabled ~= "true" and enabled ~= true then return nil end
+
+    local existing: string? = instance:GetAttribute("SilkDiffId") :: string?
+    if existing and existing ~= "" then return existing end
+
+    local newId = HttpService:GenerateGUID(false)
+    instance:SetAttribute("SilkDiffId", newId)
+    return newId
+end
+
+---------------------------------------------------------------------------
 -- Get the dot-separated path of an instance
 ---------------------------------------------------------------------------
 function Serializer:_getPath(instance: Instance): string
@@ -293,6 +309,7 @@ function Serializer:serializeInstance(instance: Instance): { [string]: any }
         path       = self:_getPath(instance),
         className  = instance.ClassName,
         name       = instance.Name,
+        silkId     = self:_ensureSilkDiffId(instance),
         properties = self:serializeProperties(instance),
         attributes = self:serializeAttributes(instance),
         tags       = self:serializeTags(instance),

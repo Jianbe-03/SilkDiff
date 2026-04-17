@@ -22,6 +22,66 @@
 
 local Signal = require(script.Parent:WaitForChild("Signal"))
 
+---------------------------------------------------------------------------
+-- Line-by-line diff via Longest Common Subsequence
+-- Returns a flat list of { line: string, status: "added"|"removed"|"unchanged" }
+---------------------------------------------------------------------------
+local function computeLineDiff(
+    oldSrc: string,
+    newSrc: string
+): { { line: string, status: string } }
+    local function splitLines(s: string): { string }
+        local lines: { string } = {}
+        if s == "" then return lines end
+        for line in (s .. "\n"):gmatch("([^\n]*)\n") do
+            table.insert(lines, line)
+        end
+        return lines
+    end
+
+    local oldLines = splitLines(oldSrc)
+    local newLines = splitLines(newSrc)
+    local m, n    = #oldLines, #newLines
+
+    -- Build DP table with 1-based rows/cols and explicit 0 guard row/column.
+    -- dp[i][j] = LCS length of oldLines[1..i-1] vs newLines[1..j-1]
+    local dp: { { number } } = {}
+    for i = 0, m do
+        local row = {}
+        for j = 0, n do
+            row[j] = 0
+        end
+        dp[i] = row
+    end
+    for i = 1, m do
+        for j = 1, n do
+            if oldLines[i] == newLines[j] then
+                dp[i][j] = dp[i - 1][j - 1] + 1
+            else
+                dp[i][j] = math.max(dp[i - 1][j], dp[i][j - 1])
+            end
+        end
+    end
+
+    -- Backtrack to produce the diff
+    local result: { { line: string, status: string } } = {}
+    local i, j = m, n
+    while i > 0 or j > 0 do
+        if i > 0 and j > 0 and oldLines[i] == newLines[j] then
+            table.insert(result, 1, { line = oldLines[i], status = "unchanged" })
+            i -= 1; j -= 1
+        elseif j > 0 and (i == 0 or dp[i][j - 1] >= dp[i - 1][j]) then
+            table.insert(result, 1, { line = newLines[j], status = "added" })
+            j -= 1
+        else
+            table.insert(result, 1, { line = oldLines[i], status = "removed" })
+            i -= 1
+        end
+    end
+
+    return result
+end
+
 local UI = {}
 UI.__index = UI
 
@@ -60,9 +120,10 @@ function UI.new(pluginInstance: Plugin, toolbar: PluginToolbar, settings)
     self._buttons  = {} :: { [string]: PluginToolbarButton }
 
     -- Public signals (other modules connect to these)
-    self.onPush   = Signal.new()
-    self.onPull   = Signal.new()
-    self.onExport = Signal.new()
+    self.onPush      = Signal.new()
+    self.onForcePush = Signal.new()
+    self.onPull      = Signal.new()
+    self.onExport    = Signal.new()
 
     -- Build everything
     self:_createToolbarButtons()
@@ -228,12 +289,25 @@ end
 function UI:_createToolbarButtons()
     -- Push
     self._buttons.push = self._toolbar:CreateButton(
-        "SilkDiff_Push", "Push changes to local machine",
+        "SilkDiff_Push", "Push watched changes to local machine",
         "rbxassetid://6031280882", "Push"
     )
     self._buttons.push.Click:Connect(function()
         self.onPush:Fire()
     end)
+
+    task.wait()
+
+    -- Force Push (full state comparison, no watcher needed)
+    self._buttons.forcePush = self._toolbar:CreateButton(
+        "SilkDiff_ForcePush", "Force Push: compare entire Roblox state against local files",
+        "rbxassetid://6034328955", "Force Push"
+    )
+    self._buttons.forcePush.Click:Connect(function()
+        self.onForcePush:Fire()
+    end)
+
+    task.wait()
 
     -- Pull
     self._buttons.pull = self._toolbar:CreateButton(
@@ -244,6 +318,8 @@ function UI:_createToolbarButtons()
         self.onPull:Fire()
     end)
 
+    task.wait()
+
     -- Export (full game → local)
     self._buttons.export = self._toolbar:CreateButton(
         "SilkDiff_Export", "Export entire game to local machine",
@@ -252,6 +328,8 @@ function UI:_createToolbarButtons()
     self._buttons.export.Click:Connect(function()
         self.onExport:Fire()
     end)
+
+    task.wait()
 
     -- Settings
     self._buttons.settings = self._toolbar:CreateButton(
@@ -269,10 +347,10 @@ end
 ---------------------------------------------------------------------------
 function UI:_createSettingsWidget()
     local info = DockWidgetPluginGuiInfo.new(
-        Enum.InitialDockState.Right,
+        Enum.InitialDockState.Float,
         false,  -- not visible at start
         false,  -- don't override saved state
-        350, 500, 300, 400
+        380, 520, 300, 400
     )
     local widget = self._plugin:CreateDockWidgetPluginGui("SilkDiff_Settings", info)
     widget.Title = "SilkDiff Settings"
@@ -395,7 +473,7 @@ function UI:_createDiffWidget()
         500, 400, 400, 300
     )
     local widget = self._plugin:CreateDockWidgetPluginGui("SilkDiff_DiffViewer", info)
-    widget.Title = "SilkDiff — Review Changes"
+    widget.Title = "SilkDiff - Review Changes"
     self._widgets.diffViewer = widget
 
     -- Permanent root frame (content is rebuilt per diff)
@@ -471,57 +549,305 @@ function UI:showDiff(diffs: { any }, summary: string, onDecision: (boolean) -> (
             icon        = "➖"
         end
 
+        -- Build detail text
+        local detailText = diff.status :: string
+        if diff.propertyChanges then
+            local n = 0; for _ in pairs(diff.propertyChanges) do n += 1 end
+            detailText ..= " · " .. n .. " prop" .. (n == 1 and "" or "s")
+        end
+        if diff.attributeChanges then
+            local n = 0; for _ in pairs(diff.attributeChanges) do n += 1 end
+            detailText ..= " · " .. n .. " attr" .. (n == 1 and "" or "s")
+        end
+        if diff.tagChanges then
+            detailText ..= " · tags"
+        end
+        local hasProps   = diff.propertyChanges ~= nil
+        local canExpand  = diff.sourceChanged == true or hasProps
+        if diff.sourceChanged == true then
+            detailText ..= " · source"
+        end
+        if canExpand then
+            detailText ..= " ▶  (click to expand)"
+        end
+
         -- Row container
         local row = Instance.new("Frame")
-        row.Size            = UDim2.new(1, 0, 0, 40)
+        row.Size             = UDim2.new(1, 0, 0, 40)
         row.BackgroundColor3 = COLORS.bg
-        row.BorderSizePixel = 0
-        row.LayoutOrder     = i
-        row.Parent          = scroll
+        row.BorderSizePixel  = 0
+        row.ClipsDescendants = true
+        row.LayoutOrder      = i
+        row.Parent           = scroll
 
         local corner = Instance.new("UICorner")
         corner.CornerRadius = UDim.new(0, 4)
         corner.Parent       = row
 
-        -- Colour bar on the left edge
+        -- Colour bar (spans header height only; updated on expand)
         local bar = Instance.new("Frame")
-        bar.Size            = UDim2.new(0, 4, 1, 0)
+        bar.Size             = UDim2.new(0, 4, 0, 40)
         bar.BackgroundColor3 = statusColor
-        bar.BorderSizePixel = 0
-        bar.Parent          = row
+        bar.BorderSizePixel  = 0
+        bar.Parent           = row
 
         -- Path
         local pathLbl = Instance.new("TextLabel")
-        pathLbl.Text            = icon .. "  " .. (diff.path or diff.name or "?")
-        pathLbl.Font            = FONT
-        pathLbl.TextSize        = TEXT_SIZE
-        pathLbl.TextColor3      = COLORS.text
+        pathLbl.Text                   = icon .. "  " .. (diff.path or diff.name or "?")
+        pathLbl.Font                   = FONT
+        pathLbl.TextSize               = TEXT_SIZE
+        pathLbl.TextColor3             = COLORS.text
         pathLbl.BackgroundTransparency = 1
-        pathLbl.Size            = UDim2.new(1, -12, 0, 20)
-        pathLbl.Position        = UDim2.new(0, 12, 0, 2)
-        pathLbl.TextXAlignment  = Enum.TextXAlignment.Left
-        pathLbl.Parent          = row
+        pathLbl.Size                   = UDim2.new(1, -12, 0, 20)
+        pathLbl.Position               = UDim2.new(0, 12, 0, 2)
+        pathLbl.TextXAlignment         = Enum.TextXAlignment.Left
+        pathLbl.Parent                 = row
 
-        -- Detail line
-        local detail = diff.status :: string
-        if diff.propertyChanges then
-            local n = 0; for _ in pairs(diff.propertyChanges) do n += 1 end
-            detail ..= " · " .. n .. " props"
-        end
-        if diff.sourceChanged then
-            detail ..= " · source"
-        end
-
+        -- Detail
         local detailLbl = Instance.new("TextLabel")
-        detailLbl.Text            = detail
-        detailLbl.Font            = FONT
-        detailLbl.TextSize        = 12
-        detailLbl.TextColor3      = COLORS.textDim
+        detailLbl.Text                   = detailText
+        detailLbl.Font                   = FONT
+        detailLbl.TextSize               = 12
+        detailLbl.TextColor3             = COLORS.textDim
         detailLbl.BackgroundTransparency = 1
-        detailLbl.Size            = UDim2.new(1, -12, 0, 16)
-        detailLbl.Position        = UDim2.new(0, 12, 0, 22)
-        detailLbl.TextXAlignment  = Enum.TextXAlignment.Left
-        detailLbl.Parent          = row
+        detailLbl.Size                   = UDim2.new(1, -12, 0, 16)
+        detailLbl.Position               = UDim2.new(0, 12, 0, 22)
+        detailLbl.TextXAlignment         = Enum.TextXAlignment.Left
+        detailLbl.Parent                 = row
+
+        -- Expandable inline detail panel (property changes + source diff)
+        if canExpand then
+            -- Helper: format a property value for display (handles all serialized types)
+            local function propValStr(v: any): string
+                if v == nil then return "nil"
+                elseif type(v) == "string" then return v
+                elseif type(v) == "number" then
+                    -- Round to 3 decimal places to avoid float noise
+                    return tostring(math.floor(v * 1000 + 0.5) / 1000)
+                elseif type(v) == "boolean" then return tostring(v)
+                elseif type(v) == "table" then
+                    -- Vector3: {X=num, Y=num, Z=num}
+                    if type(v.X) == "number" and type(v.Y) == "number" and type(v.Z) == "number" then
+                        return string.format("(%.2f, %.2f, %.2f)", v.X, v.Y, v.Z)
+                    -- Vector2: {X=num, Y=num}
+                    elseif type(v.X) == "number" and type(v.Y) == "number" then
+                        return string.format("(%.2f, %.2f)", v.X, v.Y)
+                    -- Color3: {R=num, G=num, B=num}
+                    elseif type(v.R) == "number" and type(v.G) == "number" and type(v.B) == "number" then
+                        return string.format("rgb(%d, %d, %d)", v.R, v.G, v.B)
+                    -- UDim: {Scale=num, Offset=num}
+                    elseif type(v.Scale) == "number" and type(v.Offset) == "number" then
+                        return string.format("{%.3f, %d}", v.Scale, v.Offset)
+                    -- UDim2: {X={Scale,Offset}, Y={Scale,Offset}}
+                    elseif type(v.X) == "table" and type(v.Y) == "table"
+                        and v.X.Scale ~= nil and v.Y.Scale ~= nil then
+                        return string.format("{%.3f,%d},{%.3f,%d}",
+                            v.X.Scale, v.X.Offset, v.Y.Scale, v.Y.Offset)
+                    -- CFrame: has Position sub-table
+                    elseif type(v.Position) == "table" then
+                        local p = v.Position
+                        return string.format("CFrame(%.2f, %.2f, %.2f)", p.X or 0, p.Y or 0, p.Z or 0)
+                    else
+                        -- Generic fallback: list key=value pairs (one level deep)
+                        local parts = {}
+                        for k2, v2 in pairs(v) do
+                            table.insert(parts, tostring(k2) .. "=" .. tostring(v2))
+                        end
+                        return "{" .. table.concat(parts, ", ") .. "}"
+                    end
+                else
+                    return tostring(v)
+                end
+            end
+
+            -- ── Property changes table (shown above source diff) ─────────────
+            local propFrame = nil
+            if hasProps then
+                local propChanges = diff.propertyChanges :: { [string]: any }
+                local propKeys: { string } = {}
+                for k in pairs(propChanges) do table.insert(propKeys, k) end
+                table.sort(propKeys)
+                local propHeight = math.min(200, #propKeys * 22 + 28)
+
+                propFrame = Instance.new("Frame")
+                propFrame.Name             = "PropDiff"
+                propFrame.Size             = UDim2.new(1, -4, 0, propHeight)
+                propFrame.Position         = UDim2.new(0, 4, 0, 40)
+                propFrame.BackgroundColor3 = Color3.fromRGB(22, 22, 28)
+                propFrame.BorderSizePixel  = 0
+                propFrame.ClipsDescendants = true
+                propFrame.Visible          = false
+                propFrame.ZIndex           = 2
+                propFrame.Parent           = row
+
+                -- Header row labels
+                local headerKey = Instance.new("TextLabel")
+                headerKey.Text                   = "Property"
+                headerKey.Font                   = Enum.Font.SourceSansBold
+                headerKey.TextSize               = 11
+                headerKey.TextColor3             = COLORS.textDim
+                headerKey.BackgroundTransparency = 1
+                headerKey.Size                   = UDim2.new(0.35, 0, 0, 20)
+                headerKey.Position               = UDim2.new(0, 6, 0, 2)
+                headerKey.TextXAlignment         = Enum.TextXAlignment.Left
+                headerKey.ZIndex                 = 3
+                headerKey.Parent                 = propFrame
+
+                local headerOld = Instance.new("TextLabel")
+                headerOld.Text                   = "Before"
+                headerOld.Font                   = Enum.Font.SourceSansBold
+                headerOld.TextSize               = 11
+                headerOld.TextColor3             = COLORS.textDim
+                headerOld.BackgroundTransparency = 1
+                headerOld.Size                   = UDim2.new(0.32, 0, 0, 20)
+                headerOld.Position               = UDim2.new(0.35, 0, 0, 2)
+                headerOld.TextXAlignment         = Enum.TextXAlignment.Left
+                headerOld.ZIndex                 = 3
+                headerOld.Parent                 = propFrame
+
+                local headerNew = Instance.new("TextLabel")
+                headerNew.Text                   = "After"
+                headerNew.Font                   = Enum.Font.SourceSansBold
+                headerNew.TextSize               = 11
+                headerNew.TextColor3             = COLORS.textDim
+                headerNew.BackgroundTransparency = 1
+                headerNew.Size                   = UDim2.new(0.33, -6, 0, 20)
+                headerNew.Position               = UDim2.new(0.67, 0, 0, 2)
+                headerNew.TextXAlignment         = Enum.TextXAlignment.Left
+                headerNew.ZIndex                 = 3
+                headerNew.Parent                 = propFrame
+
+                for pi, key in ipairs(propKeys) do
+                    local change = propChanges[key]
+                    local oldVal = change.old
+                    local newVal = change.new
+                    local yPos   = 22 + (pi - 1) * 22
+
+                    local rowBg = Instance.new("Frame")
+                    rowBg.BackgroundColor3 = if pi % 2 == 0
+                        then Color3.fromRGB(28, 28, 35)
+                        else Color3.fromRGB(22, 22, 28)
+                    rowBg.BorderSizePixel  = 0
+                    rowBg.Size             = UDim2.new(1, 0, 0, 22)
+                    rowBg.Position         = UDim2.new(0, 0, 0, yPos)
+                    rowBg.ZIndex           = 2
+                    rowBg.Parent           = propFrame
+
+                    local function propCell(text: string, xPos: number, width: number, color: Color3)
+                        local lbl = Instance.new("TextLabel")
+                        lbl.Text                   = text
+                        lbl.Font                   = Enum.Font.Code
+                        lbl.TextSize               = 11
+                        lbl.TextColor3             = color
+                        lbl.BackgroundTransparency = 1
+                        lbl.Size                   = UDim2.new(width, -4, 0, 22)
+                        lbl.Position               = UDim2.new(xPos, 4, 0, 0)
+                        lbl.TextXAlignment         = Enum.TextXAlignment.Left
+                        lbl.TextTruncate           = Enum.TextTruncate.AtEnd
+                        lbl.ZIndex                 = 3
+                        lbl.Parent                 = rowBg
+                        return lbl
+                    end
+
+                    propCell(key,             0,    0.35, Color3.fromRGB(180, 180, 220))
+                    propCell(propValStr(oldVal), 0.35, 0.32, Color3.fromRGB(220, 100, 100))
+                    propCell(propValStr(newVal), 0.67, 0.33, Color3.fromRGB(100, 220, 100))
+                end
+            end
+
+            -- ── Source diff panel (shown below property panel) ─────────────
+            local srcFrame = nil
+            local srcHeight = 0
+            if diff.sourceChanged then
+                local lineDiff  = computeLineDiff(diff.oldSource or "", diff.newSource or "")
+                srcHeight = math.min(300, math.max(60, #lineDiff * 18 + 8))
+
+                srcFrame = Instance.new("ScrollingFrame")
+                srcFrame.Name                = "SourceDiff"
+                srcFrame.BackgroundColor3    = Color3.fromRGB(20, 20, 20)
+                srcFrame.BorderSizePixel     = 0
+                srcFrame.ScrollBarThickness  = 4
+                srcFrame.CanvasSize          = UDim2.new(0, 0, 0, 0)
+                srcFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+                srcFrame.Visible             = false
+                srcFrame.ZIndex              = 2
+                srcFrame.Parent              = row
+
+                local lineLayout = Instance.new("UIListLayout")
+                lineLayout.SortOrder = Enum.SortOrder.LayoutOrder
+                lineLayout.Parent    = srcFrame
+
+                for li, entry in ipairs(lineDiff) do
+                    local bgColor, textColor
+                    if entry.status == "added" then
+                        bgColor   = Color3.fromRGB(20, 50, 20)
+                        textColor = Color3.fromRGB(100, 220, 100)
+                    elseif entry.status == "removed" then
+                        bgColor   = Color3.fromRGB(50, 20, 20)
+                        textColor = Color3.fromRGB(220, 100, 100)
+                    else
+                        bgColor   = Color3.fromRGB(28, 28, 28)
+                        textColor = Color3.fromRGB(180, 180, 180)
+                    end
+                    local prefix = if entry.status == "added"     then "+ "
+                                   elseif entry.status == "removed" then "- "
+                                   else   "  "
+
+                    local lineLbl = Instance.new("TextLabel")
+                    lineLbl.Text             = prefix .. entry.line
+                    lineLbl.Font             = Enum.Font.Code
+                    lineLbl.TextSize         = 12
+                    lineLbl.TextColor3       = textColor
+                    lineLbl.BackgroundColor3 = bgColor
+                    lineLbl.BorderSizePixel  = 0
+                    lineLbl.Size             = UDim2.new(1, 0, 0, 18)
+                    lineLbl.TextXAlignment   = Enum.TextXAlignment.Left
+                    lineLbl.TextTruncate     = Enum.TextTruncate.AtEnd
+                    lineLbl.ZIndex           = 3
+                    lineLbl.LayoutOrder      = li
+                    lineLbl.Parent           = srcFrame
+
+                    local lpad = Instance.new("UIPadding")
+                    lpad.PaddingLeft = UDim.new(0, 6)
+                    lpad.Parent      = lineLbl
+                end
+            end
+
+            -- Layout the panels vertically: propFrame (if any) then srcFrame (if any)
+            local function relayout(expanded: boolean)
+                local yOff = 40
+                if propFrame then
+                    propFrame.Visible  = expanded
+                    propFrame.Position = UDim2.new(0, 4, 0, yOff)
+                    if expanded then yOff += propFrame.Size.Y.Offset end
+                end
+                if srcFrame then
+                    srcFrame.Visible  = expanded
+                    srcFrame.Position = UDim2.new(0, 4, 0, yOff)
+                    srcFrame.Size     = UDim2.new(1, -4, 0, srcHeight)
+                    if expanded then yOff += srcHeight end
+                end
+                bar.Size = UDim2.new(0, 4, 0, yOff)
+                row.Size = UDim2.new(1, 0, 0, yOff)
+            end
+
+            -- Transparent click button over the 40px header
+            local clickBtn = Instance.new("TextButton")
+            clickBtn.Size                   = UDim2.new(1, 0, 0, 40)
+            clickBtn.BackgroundTransparency = 1
+            clickBtn.Text                   = ""
+            clickBtn.ZIndex                 = 5
+            clickBtn.Parent                 = row
+
+            local expanded = false
+            clickBtn.MouseButton1Click:Connect(function()
+                expanded = not expanded
+                relayout(expanded)
+                detailLbl.Text = if expanded
+                    then detailText:gsub("▶", "▼")
+                    else detailText
+            end)
+        end
     end
 
     -- Bottom button bar
@@ -571,6 +897,7 @@ end
 ---------------------------------------------------------------------------
 function UI:destroy()
     self.onPush:Destroy()
+    self.onForcePush:Destroy()
     self.onPull:Destroy()
     self.onExport:Destroy()
 
