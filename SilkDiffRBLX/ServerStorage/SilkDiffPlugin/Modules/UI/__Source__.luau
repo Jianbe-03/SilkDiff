@@ -300,8 +300,8 @@ function UI:_createToolbarButtons()
 
     -- Force Push (full state comparison, no watcher needed)
     self._buttons.forcePush = self._toolbar:CreateButton(
-        "SilkDiff_ForcePush", "Force Push: compare entire Roblox state against local files",
-        "rbxassetid://6034328955", "Force Push"
+        "SilkDiff_ForcePush", "Offline Push: compare entire Roblox state against local files",
+        "rbxassetid://6034328955", "Offline Push"
     )
     self._buttons.forcePush.Click:Connect(function()
         self.onForcePush:Fire()
