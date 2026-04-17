@@ -1,5 +1,5 @@
 """
-SilkDiff — CLI entry point
+SilkDiff - CLI entry point
 
 All silk functionality is accessed through sub-commands:
 
@@ -40,7 +40,7 @@ BANNER = r"""
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="silk",
-        description="SilkDiff — local sync tool for Roblox Studio",
+        description="SilkDiff - local sync tool for Roblox Studio",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=BANNER,
     )

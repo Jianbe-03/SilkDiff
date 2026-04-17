@@ -1,12 +1,12 @@
 # ──────────────────────────────────────────────────────────────────
-# SilkDiff — Build & Release
+# SilkDiff - Build & Release
 #
 # Triggered when a version tag (v*) is pushed.
 # Builds standalone silk binaries for 3 platforms using PyInstaller,
 # then creates a GitHub Release with all artifacts attached.
 #
 #   Platforms:
-#     • macOS ARM64   (Apple Silicon — also runs on Intel via Rosetta 2)
+#     • macOS ARM64   (Apple Silicon - also runs on Intel via Rosetta 2)
 #     • Linux AMD64
 #     • Windows AMD64
 #
@@ -61,7 +61,7 @@ jobs:
           echo "Tag version:     $TAG"
           echo "Package version: $PKG"
           if [[ "$TAG" != "$PKG" ]]; then
-            echo "::warning::Tag v$TAG does not match silk/__init__.py version $PKG — binary will report $PKG"
+            echo "::warning::Tag v$TAG does not match silk/__init__.py version $PKG - binary will report $PKG"
           fi
 
       # ── Install build deps ────────────────────────────────────
@@ -70,7 +70,7 @@ jobs:
           pip install pyinstaller
           pip install -r SilkDiffServer/requirements.txt
 
-      # ── PyInstaller — onedir build ────────────────────────────
+      # ── PyInstaller - onedir build ────────────────────────────
       - name: Build with PyInstaller
         run: |
           cd SilkDiffServer

@@ -1,5 +1,5 @@
 """
-silk rename — Rename an existing instance.
+silk rename - Rename an existing instance.
 
 Usage:
     silk rename --Instance ./ServerScriptService/OldName --Name NewName

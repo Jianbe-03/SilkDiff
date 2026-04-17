@@ -5,12 +5,12 @@ HTTP server that sits between the Roblox Studio plugin and the
 local filesystem.
 
 Endpoints:
-    GET  /api/status   — health check
-    POST /api/push     — write instance changes to local files
-    GET  /api/pull     — read local files and return them + diffs
-    POST /api/diff     — compare Roblox state against local files
-    POST /api/export   — full game export (writes whole tree)
-    POST /api/confirm  — acknowledge an approved diff
+    GET  /api/status   - health check
+    POST /api/push     - write instance changes to local files
+    GET  /api/pull     - read local files and return them + diffs
+    POST /api/diff     - compare Roblox state against local files
+    POST /api/export   - full game export (writes whole tree)
+    POST /api/confirm  - acknowledge an approved diff
 """
 
 import json
@@ -24,7 +24,7 @@ from .serializer import Serializer
 
 
 class SilkDiffHandler(BaseHTTPRequestHandler):
-    """Request handler — dependencies injected as class attributes."""
+    """Request handler - dependencies injected as class attributes."""
 
     # Set by create_server() before the server starts
     config: Config
@@ -98,7 +98,7 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
         })
 
     def _handle_push(self):
-        """POST /api/push — write changes to local files."""
+        """POST /api/push - write changes to local files."""
         try:
             body = self._read_body()
             items = body.get("data", [])
@@ -118,7 +118,7 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": str(exc)})
 
     def _handle_pull(self):
-        """GET /api/pull — read all local instances."""
+        """GET /api/pull - read all local instances."""
         try:
             paths = self.file_manager.get_all_instance_paths()
             instances = []
@@ -137,7 +137,7 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": str(exc)})
 
     def _handle_diff(self):
-        """POST /api/diff — compare Roblox data against local files."""
+        """POST /api/diff - compare Roblox data against local files."""
         try:
             body = self._read_body()
             roblox_items = body.get("data", [])
@@ -164,7 +164,7 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": str(exc)})
 
     def _handle_export(self):
-        """POST /api/export — full game export."""
+        """POST /api/export - full game export."""
         try:
             body = self._read_body()
             services = body.get("data", [])
@@ -183,7 +183,7 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": str(exc)})
 
     def _handle_confirm(self):
-        """POST /api/confirm — acknowledge a user-approved diff."""
+        """POST /api/confirm - acknowledge a user-approved diff."""
         try:
             self._send_json(200, {
                 "status": "ok",

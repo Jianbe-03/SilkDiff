@@ -1,5 +1,5 @@
 """
-silk uninstall — Remove SilkDiff from this machine.
+silk uninstall - Remove SilkDiff from this machine.
 
 Removes:
     1. The silk symlink / PATH entry
@@ -52,7 +52,7 @@ def cmd_uninstall(_args):
             print(f"  ⚠ Could not auto-remove from PATH.")
             print(f"    Please remove '{install_str}' from your system PATH manually.")
     else:
-        # macOS / Linux — remove symlink
+        # macOS / Linux - remove symlink
         symlink = Path.home() / ".local" / "bin" / "silk"
         if symlink.is_symlink() or symlink.exists():
             symlink.unlink()
@@ -70,7 +70,7 @@ def cmd_uninstall(_args):
 
     if answer in ("y", "yes"):
         if system == "Windows":
-            # Can't delete the running .exe on Windows — use delayed batch
+            # Can't delete the running .exe on Windows - use delayed batch
             import tempfile
 
             bat = Path(tempfile.gettempdir()) / "_silk_uninstall.bat"

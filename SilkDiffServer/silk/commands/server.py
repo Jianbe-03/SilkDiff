@@ -1,5 +1,5 @@
 """
-silk server — Start the SilkDiff HTTP server.
+silk server - Start the SilkDiff HTTP server.
 
 Aliases: silk start, silk open, silk conn
 """

@@ -14,7 +14,7 @@ from typing import Any, Optional
 
 
 class DiffEngine:
-    """Stateless differ — call methods directly."""
+    """Stateless differ - call methods directly."""
 
     # ------------------------------------------------------------------
     # properties / attributes (flat dicts)

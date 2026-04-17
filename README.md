@@ -2,13 +2,13 @@
 
 **Sync your Roblox game with local files using diffs.**
 
-SilkDiff lets you export your entire Roblox game to your local machine, then push and pull changes with a visual diff review — just like version control, but for Roblox instances.
+SilkDiff lets you export your entire Roblox game to your local machine, then push and pull changes with a visual diff review - just like version control, but for Roblox instances.
 
 ---
 
 ## Installation
 
-SilkDiff ships as a standalone binary — **no Python, no dependencies required.**
+SilkDiff ships as a standalone binary - **no Python, no dependencies required.**
 
 ### macOS / Linux
 
@@ -71,8 +71,8 @@ silk <command> [flags]
 | `silk create` | `--Class` *, `--Parent` *, `--Name` | Create a new instance on disk |
 | `silk rename` | `--Instance` *, `--Name` * | Rename an instance |
 | `silk move` | `--Instance` *, `--NewParent` * | Move an instance to a new parent |
-| `silk update` | — | Download and install the latest release |
-| `silk uninstall` | — | Remove SilkDiff from this machine |
+| `silk update` | - | Download and install the latest release |
+| `silk uninstall` | - | Remove SilkDiff from this machine |
 
 \* required flag
 
@@ -166,10 +166,10 @@ SilkDiff/
 ### Export (Full Game → Local)
 1. Click **Export** to dump the entire game tree to local files
 2. Every instance becomes a folder with:
-   - `__Properties__.yaml` — instance properties
-   - `__Attributes__.yaml` — custom attributes
-   - `__Tags__.yaml` — CollectionService tags
-   - `__Source__.luau` — source code (scripts only)
+   - `__Properties__.yaml` - instance properties
+   - `__Attributes__.yaml` - custom attributes
+   - `__Tags__.yaml` - CollectionService tags
+   - `__Source__.luau` - source code (scripts only)
 
 ---
 
@@ -300,4 +300,4 @@ Creates the Studio toolbar, a dockable Settings panel with inputs and dropdowns 
 
 ## License
 
-Private project — all rights reserved.
+Private project - all rights reserved.

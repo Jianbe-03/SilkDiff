@@ -1,5 +1,5 @@
 """
-silk update — Update SilkDiff to the latest version from GitHub.
+silk update - Update SilkDiff to the latest version from GitHub.
 
 Downloads the latest platform-specific binary release and replaces
 the current installation.  No Python or pip needed on the user's machine.
@@ -20,7 +20,7 @@ from pathlib import Path
 from silk import __version__
 
 # ── GitHub repository ───────────────────────────────────────────
-GITHUB_REPO = "Jianbe-03/SilkDiff"  # owner/repo — update when published
+GITHUB_REPO = "Jianbe-03/SilkDiff"  # owner/repo - update when published
 GITHUB_API_LATEST = f"https://api.github.com/repos/{GITHUB_REPO}/releases/latest"
 
 
@@ -60,7 +60,7 @@ def _get_install_dir() -> Path:
     if getattr(sys, "frozen", False):
         return Path(sys.executable).resolve().parent
     else:
-        # Dev / source mode — silk package is SilkDiffServer/silk/
+        # Dev / source mode - silk package is SilkDiffServer/silk/
         return Path(__file__).resolve().parent.parent.parent
 
 
@@ -162,7 +162,7 @@ def cmd_update(_args):
         print(f"[SilkDiff] Installing to {install_dir} …")
 
         if platform.system() == "Windows":
-            # Windows locks the running .exe — use a delayed batch
+            # Windows locks the running .exe - use a delayed batch
             # script that waits for us to exit, then copies the files.
             bat_path = tmp_path / "_silk_update.bat"
             bat_lines = [
@@ -174,7 +174,7 @@ def cmd_update(_args):
             ]
             bat_path.write_text("\r\n".join(bat_lines), encoding="utf-8")
             os.startfile(str(bat_path))  # noqa: S606
-            print(f"[SilkDiff] ✓ Update staged — it will finish momentarily.")
+            print(f"[SilkDiff] ✓ Update staged - it will finish momentarily.")
             print("[SilkDiff]   Please restart silk after the update completes.")
             sys.exit(0)
         else:
@@ -201,7 +201,7 @@ def cmd_update(_args):
                                 | stat.S_IXOTH
                             )
 
-                # Success — remove backup
+                # Success - remove backup
                 shutil.rmtree(backup)
             except Exception as exc:
                 print(f"[SilkDiff] ✗ Update failed: {exc}")

@@ -1,5 +1,5 @@
 """
-silk create — Create a new Roblox instance on disk.
+silk create - Create a new Roblox instance on disk.
 
 Usage:
     silk create --Class Script --Parent ./ServerScriptService --Name MyScript

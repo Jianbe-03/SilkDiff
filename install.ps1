@@ -1,5 +1,5 @@
 # ──────────────────────────────────────────────────────────────────
-# SilkDiff Installer — Windows (PowerShell)
+# SilkDiff Installer - Windows (PowerShell)
 #
 # Usage (from PowerShell):
 #   irm https://raw.githubusercontent.com/Jianbe-03/SilkDiff/main/install.ps1 | iex
@@ -106,7 +106,7 @@ if (Test-Path $InstallDir) {
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 Expand-Archive -Path $tmpZip -DestinationPath $InstallDir -Force
 
-# The archive contains a silk/ subdirectory — move contents one level up
+# The archive contains a silk/ subdirectory - move contents one level up
 $innerDir = Join-Path $InstallDir "silk"
 if (Test-Path $innerDir) {
     Get-ChildItem -Path $innerDir | Move-Item -Destination $InstallDir -Force

@@ -1,5 +1,5 @@
 """
-silk move — Move an instance to a new parent.
+silk move - Move an instance to a new parent.
 
 Usage:
     silk move --Instance ./ServerScriptService/MyScript --NewParent ./ReplicatedStorage
