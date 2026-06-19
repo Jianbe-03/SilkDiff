@@ -25,13 +25,52 @@ The folder hierarchy mirrors the Roblox game tree:
 
 import shutil
 from pathlib import Path
-from typing import Optional
+from typing import Any, Optional
 
 from .config import Config
 from .serializer import Serializer
 
 # ClassNames that carry source code
 SCRIPT_CLASSES = {"Script", "LocalScript", "ModuleScript"}
+
+
+# ── value normalization (YAML raw → typed envelope) ──────────────
+
+def _normalize_value(value: Any) -> Any:
+    """Convert a raw YAML value into a typed envelope {t, v}.
+    Already-typed values pass through unchanged.
+    "nil" / None both become None."""
+    if value is None or (isinstance(value, str) and value.lower() == "nil"):
+        return None
+    if isinstance(value, dict) and "t" in value and "v" in value:
+        return value  # already typed
+    if isinstance(value, bool):
+        return {"t": "boolean", "v": value}
+    if isinstance(value, (int, float)):
+        return {"t": "number", "v": value}
+    if isinstance(value, str):
+        return {"t": "Enum" if value.startswith("Enum.") else "string", "v": value}
+    if isinstance(value, dict):
+        k = set(value)
+        if k == {"Scale", "Offset"}:
+            return {"t": "UDim", "v": {"Scale": float(value["Scale"]), "Offset": float(value["Offset"])}}
+        if all(isinstance(v, dict) and set(v) == {"Scale", "Offset"} for v in value.values()):
+            return {"t": "UDim2", "v": {k2: {"Scale": float(v2["Scale"]), "Offset": float(v2["Offset"])} for k2, v2 in value.items()}}
+        if k == {"X", "Y", "Z"}:
+            return {"t": "Vector3", "v": {"X": float(value["X"]), "Y": float(value["Y"]), "Z": float(value["Z"])}}
+        if k == {"X", "Y"}:
+            return {"t": "Vector2", "v": {"X": float(value["X"]), "Y": float(value["Y"])}}
+        if k == {"R", "G", "B"}:
+            return {"t": "Color3", "v": {"R": float(value["R"]), "G": float(value["G"]), "B": float(value["B"])}}
+        if "Position" in k:
+            return {"t": "CFrame", "v": value}
+        return {"t": "dict", "v": value}
+    return value
+
+
+def _normalize_dict(raw: dict) -> dict:
+    """Normalize every value in a flat dict to typed envelopes."""
+    return {k: _normalize_value(v) for k, v in raw.items()} if isinstance(raw, dict) else raw
 
 
 class FileManager:
@@ -58,29 +97,28 @@ class FileManager:
 
     def read_instance(self, instance_path: str) -> Optional[dict]:
         """Read a single instance from disk.  Returns None if the
-        directory doesn't exist."""
+        directory doesn't exist.
+
+        All property and attribute values are normalized to typed
+        envelopes ({t, v}) to match the format sent by the plugin."""
         directory = self._instance_dir(instance_path)
         if not directory.exists():
             return None
 
         result: dict = {"path": instance_path}
 
-        # Properties
         props_file = directory / self.config.get_properties_file()
         if props_file.exists():
-            result["properties"] = self.serializer.from_file(props_file)
+            result["properties"] = _normalize_dict(self.serializer.from_file(props_file) or {})
 
-        # Attributes
         attrs_file = directory / self.config.get_attributes_file()
         if attrs_file.exists():
-            result["attributes"] = self.serializer.from_file(attrs_file)
+            result["attributes"] = _normalize_dict(self.serializer.from_file(attrs_file) or {})
 
-        # Tags
         tags_file = directory / self.config.get_tags_file()
         if tags_file.exists():
             result["tags"] = self.serializer.from_file(tags_file) or []
 
-        # Source
         source_file = directory / self.config.get_source_file()
         if source_file.exists():
             result["source"] = source_file.read_text(encoding="utf-8")
@@ -88,7 +126,10 @@ class FileManager:
         return result
 
     def write_instance(self, data: dict) -> None:
-        """Write a single instance to disk (creates the folder if needed)."""
+        """Write a single instance to disk (creates the folder if needed).
+
+        All property and attribute values are normalised to typed
+        envelopes so the YAML files always match the plugin format."""
         dot_path = data.get("path", "")
         directory = self._instance_dir(dot_path)
         directory.mkdir(parents=True, exist_ok=True)
@@ -96,14 +137,14 @@ class FileManager:
         # Properties
         if "properties" in data:
             self.serializer.to_file(
-                data["properties"],
+                _normalize_dict(data["properties"]),
                 directory / self.config.get_properties_file(),
             )
 
         # Attributes
         if "attributes" in data:
             self.serializer.to_file(
-                data["attributes"],
+                _normalize_dict(data["attributes"]),
                 directory / self.config.get_attributes_file(),
             )
 
@@ -175,11 +216,18 @@ class FileManager:
 
     def find_by_silk_id(self, silk_id: str) -> Optional[str]:
         """Scan all instance directories for the one whose attributes contain
-        ``SilkDiffId == silk_id``.  Returns the dot-separated path, or None."""
+        ``SilkDiffId == silk_id`` or ``PestoId == silk_id``.
+        Returns the dot-separated path, or None."""
         for path in self.get_all_instance_paths():
             inst = self.read_instance(path)
             if inst and isinstance(inst.get("attributes"), dict):
-                if inst["attributes"].get("SilkDiffId") == silk_id:
+                attrs = inst["attributes"]
+                # Attributes are normalized typed envelopes; unwrap to compare
+                sid = attrs.get("SilkDiffId", {})
+                pid = attrs.get("PestoId", {})
+                sid_v = sid.get("v") if isinstance(sid, dict) else sid
+                pid_v = pid.get("v") if isinstance(pid, dict) else pid
+                if sid_v == silk_id or pid_v == silk_id:
                     return path
         return None
 
