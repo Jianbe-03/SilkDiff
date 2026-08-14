@@ -494,17 +494,39 @@ function Serializer:applyInstanceData(
 end
 
 ---------------------------------------------------------------------------
--- Find a Roblox instance by its dot-separated path
+-- Find a Roblox instance by its dot-separated path, creating it (and
+-- any missing ancestors) if it doesn't exist yet.
+-- The instance's ClassName is read from the data dict.
 ---------------------------------------------------------------------------
-function Serializer:findInstanceByPath(path: string): Instance?
+function Serializer:findOrCreateInstanceByPath(path: string, data: { [string]: any }): Instance?
     if path == "" then return nil end
 
     local parts = string.split(path, ".")
     local current: Instance = game
 
-    for _, name in ipairs(parts) do
+    for i, name in ipairs(parts) do
         local child = current:FindFirstChild(name)
-        if not child then return nil end
+        if not child then
+            -- Need to create it. The last part gets the ClassName from data;
+            -- intermediate parts default to Folder.
+            local className
+            if i == #parts then
+                className = data.className or "Folder"
+            else
+                className = "Folder"
+            end
+
+            local ok, newChild = pcall(function()
+                local inst = Instance.new(className)
+                inst.Name = name
+                inst.Parent = current
+                return inst
+            end)
+            if not ok then
+                return nil
+            end
+            child = newChild
+        end
         current = child
     end
 

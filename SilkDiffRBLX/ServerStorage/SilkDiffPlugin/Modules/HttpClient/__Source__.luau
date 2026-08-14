@@ -180,7 +180,6 @@ function HttpClient:_get(endpoint: string): (boolean, any)
 
     if not ok or not result.Success then
         local msg = if ok then (result.StatusMessage or "Unknown") else tostring(result)
-        warn("[SilkDiff] GET " .. endpoint .. " failed:", msg)
         self:_debug("err", "GET " .. endpoint .. " failed", msg)
         self._connected = false
         return false, msg
@@ -223,7 +222,6 @@ function HttpClient:_post(endpoint: string, data: any): (boolean, any)
 
     if not ok or not result.Success then
         local msg = if ok then (result.StatusMessage or "Unknown") else tostring(result)
-        warn("[SilkDiff] POST " .. endpoint .. " failed:", msg)
         self:_debug("err", "POST " .. endpoint .. " failed", msg)
         self._connected = false
         return false, msg

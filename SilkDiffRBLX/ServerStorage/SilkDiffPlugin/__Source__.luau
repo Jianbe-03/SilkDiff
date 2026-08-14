@@ -246,7 +246,7 @@ ui.onPull:Connect(function()
                 if not path then
                     -- skip
                 else
-                    local instance = serializer:findInstanceByPath(path)
+                    local instance = serializer:findOrCreateInstanceByPath(path, instanceData)
                     if instance then
                         local ok, err = pcall(function()
                             serializer:applyInstanceData(instance, instanceData)
@@ -254,11 +254,11 @@ ui.onPull:Connect(function()
                         if ok then
                             appliedCount += 1
                         else
-                            warn("[SilkDiff] Failed to apply " .. path .. ": " .. tostring(err))
+                            console:log("Failed to apply " .. path .. ": " .. tostring(err), "error")
                             errorCount += 1
                         end
                     else
-                        warn("[SilkDiff] Instance not found in Roblox: " .. path)
+                        console:log("Could not find or create instance: " .. path, "error")
                         errorCount += 1
                     end
                 end
