@@ -236,15 +236,31 @@ ui.onPull:Connect(function()
     console:log("Pull diff ready: " .. summary, "info")
     ui:showDiff(entries, "Pull: " .. summary, function(approved)
         if approved then
-            -- Apply the local file data to Roblox instances
+            -- Build a set of changed paths so we only touch what was in the diff
+            local changedPaths: { [string]: boolean } = {}
+            for _, entry in ipairs(entries) do
+                local path = entry.path
+                if path then changedPaths[path] = true end
+            end
+
+            -- For "added" instances we also need to apply any parent that
+            -- doesn't exist yet — but the path itself is the one to apply.
+            -- Build a lookup from path → instanceData
+            local instancesByPath: { [string]: any } = {}
+            for _, inst in ipairs(data.instances or {}) do
+                if inst.path then
+                    instancesByPath[inst.path] = inst
+                end
+            end
+
             local appliedCount = 0
             local errorCount = 0
-            local instances = data.instances or {}
 
-            for _, instanceData in ipairs(instances) do
-                local path = instanceData.path
-                if not path then
-                    -- skip
+            for path, _ in pairs(changedPaths) do
+                local instanceData = instancesByPath[path]
+                if not instanceData then
+                    console:log("No local data for changed path: " .. path, "warn")
+                    errorCount += 1
                 else
                     local instance = serializer:findOrCreateInstanceByPath(path, instanceData)
                     if instance then

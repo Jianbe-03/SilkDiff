@@ -445,12 +445,13 @@ function Serializer:applyInstanceData(
     end)
 
     for _, propName in ipairs(propNames) do
-        -- Skip Parent — we don't reparent instances via Pull
-        -- Skip Position and Orientation if CFrame is present (CFrame contains both)
+        -- Skip properties we can't or shouldn't set
         if propName == "Parent" then
-            -- skip
+            -- don't reparent via Pull
+        elseif propName == "ClassName" then
+            -- read-only on an existing instance
         elseif (propName == "Position" or propName == "Orientation") and properties.CFrame then
-            -- skip, CFrame covers these
+            -- CFrame covers both of these
         else
             local envelope = properties[propName]
             local ok, val = pcall(function()
@@ -464,23 +465,29 @@ function Serializer:applyInstanceData(
         end
     end
 
-    -- Apply attributes (clear first, then set)
-    for name in pairs(instance:GetAttributes()) do
-        instance:SetAttribute(name, nil)
-    end
+    -- Apply attributes (only the ones in the local data)
     for name, envelope in pairs(attributes) do
-        local ok, val = pcall(function()
-            return self:_deserializeValue(envelope)
-        end)
-        if ok then
-            instance:SetAttribute(name, val)
+        -- Skip protected internal attributes
+        if not string.find(name, "^RBX_") then
+            local ok, val = pcall(function()
+                return self:_deserializeValue(envelope)
+            end)
+            if ok then
+                if val ~= nil then
+                    instance:SetAttribute(name, val)
+                else
+                    instance:SetAttribute(name, nil)
+                end
+            end
         end
     end
 
     -- Apply tags (clear first, then add)
-    for _, tag in ipairs(CollectionService:GetTags(instance)) do
-        CollectionService:RemoveTag(instance, tag)
-    end
+    pcall(function()
+        for _, tag in ipairs(CollectionService:GetTags(instance)) do
+            CollectionService:RemoveTag(instance, tag)
+        end
+    end)
     for _, tag in ipairs(tags) do
         CollectionService:AddTag(instance, tag)
     end
