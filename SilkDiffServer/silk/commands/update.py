@@ -16,6 +16,7 @@ import tempfile
 import urllib.request
 import zipfile
 from pathlib import Path
+from typing import Union
 
 from silk import __version__
 
@@ -64,7 +65,7 @@ def _get_install_dir() -> Path:
         return Path(__file__).resolve().parent.parent.parent
 
 
-def _get_latest_release() -> dict | None:
+def _get_latest_release() -> Union[dict, None]:
     """Fetch the latest release object from the GitHub API."""
     try:
         req = urllib.request.Request(
@@ -81,7 +82,7 @@ def _get_latest_release() -> dict | None:
         return None
 
 
-def _find_asset_url(release: dict, plat: str) -> str | None:
+def _find_asset_url(release: dict, plat: str) -> Union[str, None]:
     """Find the download URL for the matching platform asset."""
     ext = "zip" if plat.startswith("windows") else "tar.gz"
     target_name = f"silk-{plat}.{ext}"
