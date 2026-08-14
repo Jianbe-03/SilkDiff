@@ -263,7 +263,7 @@ function Serializer:serializeProperties(instance: Instance): { [string]: any }
     end
 
     -- Parent reference
-    properties["Parent"] = self:_getParentName(instance)
+    properties["Parent"] = self:_serializeValue(self:_getParentName(instance))
 
     -- Class-specific properties
     local classProps = CLASS_PROPERTIES[instance.ClassName]
