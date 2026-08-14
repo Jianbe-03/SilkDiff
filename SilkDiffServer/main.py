@@ -63,6 +63,8 @@ def build_parser() -> argparse.ArgumentParser:
                           help="Port to listen on (default: 6969)")
     p_server.add_argument("--project", default=os.getcwd(),
                           help="Project directory (default: current dir)")
+    p_server.add_argument("--debug", action="store_true",
+                          help="Print full Python tracebacks when errors occur")
 
     # ── create ──────────────────────────────────────────────────
     p_create = sub.add_parser(

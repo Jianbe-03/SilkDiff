@@ -23,6 +23,7 @@ def cmd_server(args):
         host=args.host,
         port=args.port,
         project_dir=args.project,
+        debug=args.debug,
     )
 
     print(BANNER)

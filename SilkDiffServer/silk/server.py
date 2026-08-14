@@ -14,6 +14,7 @@ Endpoints:
 """
 
 import json
+import traceback
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from typing import Any
 
@@ -47,6 +48,11 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length)
         return json.loads(raw) if raw else {}
+
+    def _log_error(self, exc: Exception) -> None:
+        """Log a traceback to stderr when debug mode is enabled."""
+        if self.config.debug:
+            traceback.print_exc()
 
     # ------------------------------------------------------------------
     # routing
@@ -116,6 +122,7 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
                 "written": written,
             })
         except Exception as exc:
+            self._log_error(exc)
             self._send_json(500, {"error": str(exc)})
 
     def _handle_pull(self):
@@ -182,6 +189,7 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
                 "count": len(diffs),
             })
         except Exception as exc:
+            self._log_error(exc)
             self._send_json(500, {"error": str(exc)})
 
     def _handle_diff(self):
@@ -215,6 +223,7 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
                 "count": len(diffs),
             })
         except Exception as exc:
+            self._log_error(exc)
             self._send_json(500, {"error": str(exc)})
 
     def _handle_export(self):
@@ -237,6 +246,7 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
                 "written": total,
             })
         except Exception as exc:
+            self._log_error(exc)
             self._send_json(500, {"error": str(exc)})
 
     def _handle_confirm(self):
@@ -247,6 +257,7 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
                 "message": "Diff confirmed",
             })
         except Exception as exc:
+            self._log_error(exc)
             self._send_json(500, {"error": str(exc)})
 
     # ------------------------------------------------------------------

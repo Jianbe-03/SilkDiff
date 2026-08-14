@@ -28,6 +28,9 @@ class Config:
     # Root directory where instance folders live on disk
     project_dir: str = field(default_factory=os.getcwd)
 
+    # Debug mode — print full tracebacks on errors
+    debug: bool = False
+
     # ---- helpers ----
 
     def get_properties_file(self) -> str:
