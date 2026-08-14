@@ -366,6 +366,152 @@ function Serializer:serializeChanges(changes: { any }): { any }
 end
 
 ---------------------------------------------------------------------------
+-- Convert a typed envelope {t, v} back to a Roblox-native value
+---------------------------------------------------------------------------
+function Serializer:_deserializeValue(envelope: any): any
+    if type(envelope) ~= "table" then
+        return envelope
+    end
+
+    local t = envelope.t
+    local v = envelope.v
+
+    if t == "string" then return v
+    elseif t == "number" then return v
+    elseif t == "boolean" then return v
+    elseif t == "nil" then return nil
+
+    elseif t == "Vector3" then
+        return Vector3.new(v.X, v.Y, v.Z)
+    elseif t == "Vector2" then
+        return Vector2.new(v.X, v.Y)
+    elseif t == "Color3" then
+        return Color3.fromRGB(v.R, v.G, v.B)
+    elseif t == "UDim" then
+        return UDim.new(v.Scale, v.Offset)
+    elseif t == "UDim2" then
+        return UDim2.new(
+            v.X.Scale, v.X.Offset,
+            v.Y.Scale, v.Y.Offset
+        )
+    elseif t == "CFrame" then
+        return CFrame.fromMatrix(
+            Vector3.new(v.Position.X, v.Position.Y, v.Position.Z),
+            Vector3.new(v.RightVector.X, v.RightVector.Y, v.RightVector.Z),
+            Vector3.new(v.UpVector.X, v.UpVector.Y, v.UpVector.Z),
+            Vector3.new(v.LookVector.X, v.LookVector.Y, v.LookVector.Z)
+        )
+    elseif t == "Enum" then
+        -- v looks like "Enum.Material.SmoothPlastic" – return the string
+        -- The engine auto-converts it when assigned to an Enum property
+        return v
+    elseif t == "Instance" then
+        -- Instance references stored as path strings
+        return v
+    elseif t == "BrickColor" then
+        local ok, bc = pcall(function()
+            return BrickColor.new(v)
+        end)
+        return if ok then bc else BrickColor.Red()
+    end
+
+    return v
+end
+
+---------------------------------------------------------------------------
+-- Apply local file instance data onto a Roblox instance
+---------------------------------------------------------------------------
+function Serializer:applyInstanceData(
+    instance: Instance,
+    data: { [string]: any }
+)
+    local properties = data.properties or {}
+    local attributes = data.attributes or {}
+    local tags = data.tags or {}
+    local source = data.source
+
+    -- Apply properties
+    -- Collect all property names first so we can apply in the right order
+    local propNames: { string } = {}
+    for name in pairs(properties) do
+        table.insert(propNames, name)
+    end
+
+    -- Sort: CFrame last so it doesn't get overwritten by Position/Orientation
+    table.sort(propNames, function(a, b)
+        if a == "CFrame" then return false end  -- CFrame goes last
+        if b == "CFrame" then return true end
+        return a < b
+    end)
+
+    for _, propName in ipairs(propNames) do
+        -- Skip Parent — we don't reparent instances via Pull
+        -- Skip Position and Orientation if CFrame is present (CFrame contains both)
+        if propName == "Parent" then
+            -- skip
+        elseif (propName == "Position" or propName == "Orientation") and properties.CFrame then
+            -- skip, CFrame covers these
+        else
+            local envelope = properties[propName]
+            local ok, val = pcall(function()
+                return self:_deserializeValue(envelope)
+            end)
+            if ok and val ~= nil then
+                pcall(function()
+                    (instance :: any)[propName] = val
+                end)
+            end
+        end
+    end
+
+    -- Apply attributes (clear first, then set)
+    for name in pairs(instance:GetAttributes()) do
+        instance:SetAttribute(name, nil)
+    end
+    for name, envelope in pairs(attributes) do
+        local ok, val = pcall(function()
+            return self:_deserializeValue(envelope)
+        end)
+        if ok then
+            instance:SetAttribute(name, val)
+        end
+    end
+
+    -- Apply tags (clear first, then add)
+    for _, tag in ipairs(CollectionService:GetTags(instance)) do
+        CollectionService:RemoveTag(instance, tag)
+    end
+    for _, tag in ipairs(tags) do
+        CollectionService:AddTag(instance, tag)
+    end
+
+    -- Apply source for script types
+    if source ~= nil and SCRIPT_CLASSES[instance.ClassName] then
+        pcall(function()
+            (instance :: any).Source = source
+        end)
+    end
+end
+
+---------------------------------------------------------------------------
+-- Find a Roblox instance by its dot-separated path
+---------------------------------------------------------------------------
+function Serializer:findInstanceByPath(path: string): Instance?
+    if path == "" then return nil end
+
+    local parts = string.split(path, ".")
+    local current: Instance = game
+
+    for _, name in ipairs(parts) do
+        local child = current:FindFirstChild(name)
+        if not child then return nil end
+        current = child
+    end
+
+    return current
+end
+
+---------------------------------------------------------------------------
 -- JSON helpers (thin wrappers around HttpService)
 ---------------------------------------------------------------------------
 function Serializer:toJSON(data: any): string

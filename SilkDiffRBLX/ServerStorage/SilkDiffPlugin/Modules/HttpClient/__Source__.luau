@@ -170,25 +170,33 @@ function HttpClient:_get(endpoint: string): (boolean, any)
 
     self:_debug("req", "GET " .. url)
 
-    local ok, raw = pcall(function()
-        return HttpService:GetAsync(url)
+    local ok, result = pcall(function()
+        return HttpService:RequestAsync({
+            Url = url,
+            Method = "GET",
+            Timeout = 30,
+        })
     end)
 
-    if not ok then
-        warn("[SilkDiff] GET " .. endpoint .. " failed:", raw)
-        self:_debug("err", "GET " .. endpoint .. " failed", tostring(raw))
+    if not ok or not result.Success then
+        local msg = if ok then (result.StatusMessage or "Unknown") else tostring(result)
+        warn("[SilkDiff] GET " .. endpoint .. " failed:", msg)
+        self:_debug("err", "GET " .. endpoint .. " failed", msg)
         self._connected = false
-        return false, raw
+        return false, msg
     end
 
-    self:_debug("res", "GET " .. endpoint .. " 200", raw)
+    local responseBody = result.Body or ""
+
+    self:_debug("res", "GET " .. endpoint .. " " .. tostring(result.StatusCode), responseBody)
 
     -- Try to decode JSON; fall back to raw string
     local decodeOk, parsed = pcall(function()
-        return HttpService:JSONDecode(raw)
+        return HttpService:JSONDecode(responseBody)
     end)
 
-    return true, if decodeOk then parsed else raw
+    self._connected = true
+    return true, if decodeOk then parsed else responseBody
 end
 
 ---------------------------------------------------------------------------
@@ -201,24 +209,42 @@ function HttpClient:_post(endpoint: string, data: any): (boolean, any)
 
     self:_debug("req", "POST " .. endpoint, body)
 
-    local ok, raw = pcall(function()
-        return HttpService:PostAsync(url, body, Enum.HttpContentType.ApplicationJson)
+    local ok, result = pcall(function()
+        return HttpService:RequestAsync({
+            Url = url,
+            Method = "POST",
+            Headers = {
+                ["Content-Type"] = "application/json",
+            },
+            Body = body,
+            Timeout = 30,
+        })
     end)
 
-    if not ok then
-        warn("[SilkDiff] POST " .. endpoint .. " failed:", raw)
-        self:_debug("err", "POST " .. endpoint .. " failed", tostring(raw))
+    if not ok or not result.Success then
+        local msg = if ok then (result.StatusMessage or "Unknown") else tostring(result)
+        warn("[SilkDiff] POST " .. endpoint .. " failed:", msg)
+        self:_debug("err", "POST " .. endpoint .. " failed", msg)
         self._connected = false
-        return false, raw
+        return false, msg
     end
 
-    self:_debug("res", "POST " .. endpoint .. " 200", raw)
+    local responseBody = result.Body or ""
 
+    self:_debug("res", "POST " .. endpoint .. " " .. tostring(result.StatusCode), responseBody)
+
+    -- Try to decode JSON; fall back to raw string
     local decodeOk, parsed = pcall(function()
-        return HttpService:JSONDecode(raw)
+        return HttpService:JSONDecode(responseBody)
     end)
 
-    return true, if decodeOk then parsed else raw
+    if result.StatusCode >= 400 then
+        self._connected = false
+        local errMsg = if decodeOk then (parsed.error or tostring(result.StatusCode)) else tostring(result.StatusCode)
+        return false, errMsg
+    end
+
+    return true, if decodeOk then parsed else responseBody
 end
 
 ---------------------------------------------------------------------------

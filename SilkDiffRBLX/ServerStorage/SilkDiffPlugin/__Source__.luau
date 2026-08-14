@@ -236,12 +236,36 @@ ui.onPull:Connect(function()
     console:log("Pull diff ready: " .. summary, "info")
     ui:showDiff(entries, "Pull: " .. summary, function(approved)
         if approved then
-            local confirmOk, confirmResult = httpClient:confirmDiff(data)
-            if confirmOk then
-                console:log("Changes pulled successfully!", "success")
-            else
-                console:log("Pull apply failed: " .. tostring(confirmResult), "error")
+            -- Apply the local file data to Roblox instances
+            local appliedCount = 0
+            local errorCount = 0
+            local instances = data.instances or {}
+
+            for _, instanceData in ipairs(instances) do
+                local path = instanceData.path
+                if not path then
+                    -- skip
+                else
+                    local instance = serializer:findInstanceByPath(path)
+                    if instance then
+                        local ok, err = pcall(function()
+                            serializer:applyInstanceData(instance, instanceData)
+                        end)
+                        if ok then
+                            appliedCount += 1
+                        else
+                            warn("[SilkDiff] Failed to apply " .. path .. ": " .. tostring(err))
+                            errorCount += 1
+                        end
+                    else
+                        warn("[SilkDiff] Instance not found in Roblox: " .. path)
+                        errorCount += 1
+                    end
+                end
             end
+
+            console:log(string.format("Pull complete! Applied %d instance(s) (%d errors).", appliedCount, errorCount), if errorCount > 0 then "warn" else "success")
+            instanceWatcher:clearChanges()
         else
             console:log("Pull cancelled.", "warn")
         end
