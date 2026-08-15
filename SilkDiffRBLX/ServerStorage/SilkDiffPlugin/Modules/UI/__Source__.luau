@@ -128,6 +128,7 @@ function UI.new(pluginInstance: Plugin, toolbar: PluginToolbar, settings)
     -- Build everything
     self:_createToolbarButtons()
     self:_createSettingsWidget()
+    self:_createHelpWidget()
     self:_createDiffWidget()
 
     return self
@@ -300,8 +301,8 @@ function UI:_createToolbarButtons()
 
     -- Force Push (full state comparison, no watcher needed)
     self._buttons.forcePush = self._toolbar:CreateButton(
-        "SilkDiff_ForcePush", "Offline Push: compare entire Roblox state against local files",
-        "rbxassetid://6034328955", "Offline Push"
+        "SilkDiff_ForcePush", "Force Push: compare entire Roblox state against local files and force a push.",
+        "rbxassetid://6034328955", "Force Push"
     )
     self._buttons.forcePush.Click:Connect(function()
         self.onForcePush:Fire()
@@ -378,12 +379,31 @@ function UI:_createSettingsWidget()
     pad.PaddingRight  = UDim.new(0, PAD)
     pad.Parent        = scroll
 
-    -- Title
-    local title = self:_label(scroll, "⚙  SilkDiff Settings", {
+    -- Title row (title label + "?" help button in the top-right)
+    local titleRow = Instance.new("Frame")
+    titleRow.Size = UDim2.new(1, 0, 0, 28)
+    titleRow.BackgroundTransparency = 1
+    titleRow.LayoutOrder = 0
+    titleRow.Parent = scroll
+
+    local title = self:_label(titleRow, "⚙  SilkDiff Settings", {
         font     = FONT_BOLD,
         textSize = HEAD_SIZE,
     })
-    title.LayoutOrder = 0
+    title.Size = UDim2.new(1, -32, 0, 28)
+
+    local helpBtn = self:_button(titleRow, "?", COLORS.bgHover, {
+        size = UDim2.new(0, 24, 0, 24),
+    })
+    helpBtn.Position = UDim2.new(1, -26, 0, 2)
+    helpBtn.Font = FONT_BOLD
+    helpBtn.TextSize = 16
+    helpBtn.MouseButton1Click:Connect(function()
+        local w = self._widgets.help
+        if w then
+            w.Enabled = not w.Enabled
+        end
+    end)
 
     -- Build one row per setting
     local inputs: { [string]: any } = {}
@@ -461,6 +481,127 @@ function UI:_createSettingsWidget()
         end
         self:showNotification("Settings reset to defaults!")
     end)
+end
+
+---------------------------------------------------------------------------
+-- Help widget (floating window explaining what each setting does)
+---------------------------------------------------------------------------
+function UI:_createHelpWidget()
+    local info = DockWidgetPluginGuiInfo.new(
+        Enum.InitialDockState.Float,
+        false,  -- not visible at start
+        false,  -- don't override saved state
+        420, 560, 360, 480
+    )
+    local widget = self._plugin:CreateDockWidgetPluginGui("SilkDiff_Help", info)
+    widget.Title = "SilkDiff - Help"
+    self._widgets.help = widget
+
+    local root = Instance.new("Frame")
+    root.Size            = UDim2.new(1, 0, 1, 0)
+    root.BackgroundColor3 = COLORS.bg
+    root.BorderSizePixel = 0
+    root.Parent          = widget
+
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Size                = UDim2.new(1, 0, 1, 0)
+    scroll.BackgroundColor3    = COLORS.bg
+    scroll.BorderSizePixel     = 0
+    scroll.ScrollBarThickness  = 6
+    scroll.CanvasSize          = UDim2.new(0, 0, 0, 0)
+    scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+    scroll.Parent              = root
+
+    local layout = Instance.new("UIListLayout")
+    layout.SortOrder = Enum.SortOrder.LayoutOrder
+    layout.Padding   = UDim.new(0, 6)
+    layout.Parent    = scroll
+
+    local pad = Instance.new("UIPadding")
+    pad.PaddingTop    = UDim.new(0, PAD)
+    pad.PaddingBottom = UDim.new(0, PAD)
+    pad.PaddingLeft   = UDim.new(0, PAD)
+    pad.PaddingRight  = UDim.new(0, PAD)
+    pad.Parent        = scroll
+
+    -- Title
+    local title = self:_label(scroll, "❓  SilkDiff Help", {
+        font     = FONT_BOLD,
+        textSize = HEAD_SIZE,
+    })
+    title.Size = UDim2.new(1, 0, 0, 28)
+
+    -- Explain the toolbar actions
+    local function actionRow(titleText: string, desc: string)
+        local frame = Instance.new("Frame")
+        frame.Size = UDim2.new(1, 0, 0, 0)
+        frame.BackgroundTransparency = 1
+        frame.AutomaticSize = Enum.AutomaticSize.Y
+        frame.Parent = scroll
+
+        local rowLayout = Instance.new("UIListLayout")
+        rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
+        rowLayout.Padding = UDim.new(0, 2)
+        rowLayout.Parent = frame
+
+        local nameLbl = self:_label(frame, titleText, { font = FONT_BOLD, textColor = COLORS.accent })
+        nameLbl.Size = UDim2.new(1, 0, 0, 20)
+
+        local descLbl = self:_label(frame, desc, { textColor = COLORS.textDim })
+        descLbl.Size = UDim2.new(1, 0, 0, 0)
+        descLbl.AutomaticSize = Enum.AutomaticSize.Y
+        descLbl.TextWrapped = true
+    end
+
+    actionRow("Push", "Sends your changed instances from Roblox to the local files. " ..
+        "You review the diff in the viewer and only the staged changes are written to disk.")
+    actionRow("Force Push", "Compares the ENTIRE Roblox state against your local files and " ..
+        "shows every difference. Use this when the watcher may have missed changes (e.g. " ..
+        "changes made while Studio was closed, or changes made by another team member while you were offline). It's a full comparison, no watcher needed.")
+    actionRow("Pull", "Applies local file changes back into Roblox. The diff shows what will " ..
+        "change in Studio, and only the staged changes are applied to your instances.")
+    actionRow("Export", "Wipes your entire local tree and rebuilds it from the current Roblox " ..
+        "state. This is destructive to local files - make sure any local-only work is backed up.")
+
+    -- Spacer
+    local spacer = Instance.new("Frame")
+    spacer.Size = UDim2.new(1, 0, 0, 8)
+    spacer.BackgroundTransparency = 1
+    spacer.Parent = scroll
+
+    -- Explain each setting
+    local settingsTitle = self:_label(scroll, "⚙  Settings", {
+        font     = FONT_BOLD,
+        textSize = HEAD_SIZE,
+    })
+    settingsTitle.Size = UDim2.new(1, 0, 0, 28)
+
+    for _, key in ipairs(self._settings:getSettingOrder()) do
+        local desc = self._settings:getDescription(key)
+        if desc ~= "" then
+            local frame = Instance.new("Frame")
+            frame.Size = UDim2.new(1, 0, 0, 0)
+            frame.BackgroundTransparency = 1
+            frame.AutomaticSize = Enum.AutomaticSize.Y
+            frame.Parent = scroll
+
+            local rowLayout = Instance.new("UIListLayout")
+            rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
+            rowLayout.Padding = UDim.new(0, 2)
+            rowLayout.Parent = frame
+
+            local nameLbl = self:_label(frame, self._settings:getLabel(key), {
+                font = FONT_BOLD,
+                textColor = COLORS.accent,
+            })
+            nameLbl.Size = UDim2.new(1, 0, 0, 20)
+
+            local descLbl = self:_label(frame, desc, { textColor = COLORS.textDim })
+            descLbl.Size = UDim2.new(1, 0, 0, 0)
+            descLbl.AutomaticSize = Enum.AutomaticSize.Y
+            descLbl.TextWrapped = true
+        end
+    end
 end
 
 ---------------------------------------------------------------------------

@@ -77,6 +77,34 @@ local SETTING_LABELS = {
     DebugMode          = "Debug Mode (log HTTP traffic)",
 }
 
+---------------------------------------------------------------------------
+-- Longer explanations shown in the help window
+---------------------------------------------------------------------------
+local SETTING_DESCRIPTIONS = {
+    ServerHost = "The IP address the SilkDiff server listens on. " ..
+        "127.0.0.1 means only this computer can connect, which is the safe default.",
+    ServerPort = "The TCP port the SilkDiff server listens on. " ..
+        "Make sure it matches the port you used when starting the server (default 6969).",
+    PropertiesExtension = "File format used for property, attribute, and tag files. " ..
+        ".yaml is human-readable; .json is also supported.",
+    SourceExtension = "The file extension for script source code on disk. " ..
+        "Choose .luau, .lua, or .txt depending on your editor setup.",
+    PropertiesFileName = "Base name of the file containing instance properties " ..
+        "(defaults to __Properties__).",
+    AttributesFileName = "Base name of the file containing instance attributes " ..
+        "(defaults to __Attributes__).",
+    TagsFileName = "Base name of the file containing CollectionService tags " ..
+        "(defaults to __Tags__).",
+    SourceFileName = "Base name of the file containing script source " ..
+        "(defaults to __Source__).",
+    UseInstanceIds = "When enabled, instances are matched by a SilkDiffId attribute " ..
+        "instead of their folder path. This keeps renames and moves in sync correctly.",
+    UseConsole = "Route all SilkDiff log output to the in-Studio console panel " ..
+        "instead of the Studio Output window.",
+    DebugMode = "Log raw HTTP request and response bodies to the console. " ..
+        "Enable this when troubleshooting sync issues.",
+}
+
 --- The display order of settings in the UI
 local SETTING_ORDER = {
     "ServerHost",
@@ -196,6 +224,13 @@ end
 ---------------------------------------------------------------------------
 function Settings:getLabel(key: string): string
     return SETTING_LABELS[key] or key
+end
+
+---------------------------------------------------------------------------
+-- Get the longer explanation for a setting key (shown in the help window)
+---------------------------------------------------------------------------
+function Settings:getDescription(key: string): string
+    return SETTING_DESCRIPTIONS[key] or ""
 end
 
 ---------------------------------------------------------------------------
