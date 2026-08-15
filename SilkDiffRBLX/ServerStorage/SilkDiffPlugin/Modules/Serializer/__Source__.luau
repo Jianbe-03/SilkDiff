@@ -222,6 +222,45 @@ function Serializer:_ensureSilkDiffId(instance: Instance): string?
 end
 
 ---------------------------------------------------------------------------
+-- Assign a fresh SilkDiffId to an instance (used to break duplicates).
+---------------------------------------------------------------------------
+function Serializer:_regenerateSilkId(instance: Instance): string?
+    local enabled = self._settings:get("UseInstanceIds")
+    if enabled ~= "true" and enabled ~= true then return nil end
+
+    local newId = HttpService:GenerateGUID(false)
+    instance:SetAttribute("SilkDiffId", newId)
+    return newId
+end
+
+---------------------------------------------------------------------------
+-- Recursively detect duplicate SilkDiffIds within a tree and reassign
+-- fresh ids to the duplicates. Roblox copies attributes on duplicate,
+-- so a duplicated part would otherwise share an id with the original.
+-- Returns the set of ids seen so far (so nested calls can share it).
+---------------------------------------------------------------------------
+function Serializer:_dedupeSilkIds(instance: Instance, seen: { [string]: boolean }?): { [string]: boolean }
+    seen = seen or {}
+
+    local id = instance:GetAttribute("SilkDiffId")
+    if typeof(id) == "string" and id ~= "" then
+        if seen[id] then
+            -- Duplicate! Reassign a fresh id
+            local fresh = self:_regenerateSilkId(instance)
+            if fresh then seen[fresh] = true end
+        else
+            seen[id] = true
+        end
+    end
+
+    for _, child in ipairs(instance:GetChildren()) do
+        self:_dedupeSilkIds(child, seen)
+    end
+
+    return seen
+end
+
+---------------------------------------------------------------------------
 -- Get the dot-separated path of an instance
 ---------------------------------------------------------------------------
 function Serializer:_getPath(instance: Instance): string
@@ -334,6 +373,10 @@ end
 -- Serialize an entire instance tree (instance + all descendants)
 ---------------------------------------------------------------------------
 function Serializer:serializeTree(root: Instance): { [string]: any }
+    -- Detect and fix duplicate SilkDiffIds first (duplicated instances
+    -- copy the original's attribute, which would break sync tracking)
+    self:_dedupeSilkIds(root)
+
     local data = self:serializeInstance(root)
 
     local children = {}
@@ -353,10 +396,22 @@ end
 ---------------------------------------------------------------------------
 function Serializer:serializeChanges(changes: { any }): { any }
     local serialized = {}
+    local seen: { [string]: boolean } = {}
 
     for _, change in ipairs(changes) do
+        local instance = change.instance
+        -- Reassign a fresh id if this instance's id is a duplicate of
+        -- one already seen in this batch (e.g. after duplicating)
+        local id = instance:GetAttribute("SilkDiffId")
+        if typeof(id) == "string" and id ~= "" then
+            if seen[id] then
+                self:_regenerateSilkId(instance)
+            else
+                seen[id] = true
+            end
+        end
         table.insert(serialized, {
-            instance = self:serializeInstance(change.instance),
+            instance = self:serializeInstance(instance),
             changes  = change.changes,
             path     = change.path,
         })
@@ -546,6 +601,31 @@ function Serializer:findInstanceByPath(path: string): Instance?
     end
 
     return current
+end
+
+---------------------------------------------------------------------------
+-- Find an instance by its SilkDiffId attribute (scans the whole tree).
+-- Returns nil if not found.
+---------------------------------------------------------------------------
+function Serializer:findInstanceBySilkId(silkId: string): Instance?
+    if silkId == "" then return nil end
+
+    local function search(instance: Instance): Instance?
+        if instance:GetAttribute("SilkDiffId") == silkId then
+            return instance
+        end
+        for _, child in ipairs(instance:GetChildren()) do
+            local found = search(child)
+            if found then return found end
+        end
+        return nil
+    end
+
+    for _, service in ipairs(game:GetChildren()) do
+        local found = search(service)
+        if found then return found end
+    end
+    return nil
 end
 
 ---------------------------------------------------------------------------

@@ -49,6 +49,8 @@ local WATCHED_SERVICES = {
     "VRService",
 }
 
+local HttpService = game:GetService("HttpService")
+
 ---------------------------------------------------------------------------
 -- Constructor
 ---------------------------------------------------------------------------
@@ -65,7 +67,37 @@ function InstanceWatcher.new()
     --- Whether the watcher is currently active
     self._watching = false
 
+    --- SilkDiffIds we've seen, used to detect duplicates immediately
+    self._seenIds = {} :: { [string]: boolean }
+
     return self
+end
+
+---------------------------------------------------------------------------
+-- Internal: assign a fresh SilkDiffId to an instance (used to break
+-- duplicates when Roblox copies the original's attributes on duplicate)
+---------------------------------------------------------------------------
+function InstanceWatcher:_regenerateSilkId(instance: Instance)
+    local newId = HttpService:GenerateGUID(false)
+    instance:SetAttribute("SilkDiffId", newId)
+    self._seenIds[newId] = true
+end
+
+---------------------------------------------------------------------------
+-- Internal: register an instance's SilkDiffId, regenerating it if it's
+-- already been seen (i.e. this instance is a duplicate of another).
+---------------------------------------------------------------------------
+function InstanceWatcher:_registerSilkId(instance: Instance)
+    local id = instance:GetAttribute("SilkDiffId")
+    if typeof(id) ~= "string" or id == "" then
+        return
+    end
+    if self._seenIds[id] then
+        -- Duplicate! Give it a fresh id right away
+        self:_regenerateSilkId(instance)
+    else
+        self._seenIds[id] = true
+    end
 end
 
 ---------------------------------------------------------------------------
@@ -117,6 +149,10 @@ end
 -- Internal: Hook up change listeners on a single instance
 ---------------------------------------------------------------------------
 function InstanceWatcher:_watchInstance(instance: Instance)
+    -- Register this instance's SilkDiffId so duplicates are caught as
+    -- soon as they appear (Roblox copies attributes on duplicate).
+    self:_registerSilkId(instance)
+
     -- Property changes (fires with the property name)
     local propConn = instance.Changed:Connect(function(propertyName: string)
         self:_recordChange(instance, "PropertyChanged", propertyName)
@@ -131,6 +167,10 @@ function InstanceWatcher:_watchInstance(instance: Instance)
 
     -- New children
     local addConn = instance.ChildAdded:Connect(function(child: Instance)
+        -- If the new child is a duplicate (shares a SilkDiffId with an
+        -- existing instance), give it a fresh id immediately
+        self:_registerSilkId(child)
+        -- A regenerated id shows up as an attribute change; record it
         self:_recordChange(instance, "ChildAdded", child.Name)
         -- Record the new child (and its descendants) so they appear in the diff
         self:_recordNewInstance(child)

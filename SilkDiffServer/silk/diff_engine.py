@@ -135,11 +135,25 @@ class DiffEngine:
         """Compare two serialized instances (without children).
         Returns a diff dict or ``None`` if nothing changed."""
 
+        def _silk_of(data: dict) -> str:
+            silk = data.get("silkId")
+            if silk:
+                return silk
+            attrs = data.get("attributes") or {}
+            for key in ("SilkDiffId", "PestoId"):
+                sid = attrs.get(key)
+                if isinstance(sid, dict):
+                    sid = sid.get("v")
+                if sid:
+                    return sid
+            return ""
+
         if old_data is None and new_data is not None:
             return {
                 "path": new_data.get("path", ""),
                 "name": new_data.get("name", ""),
                 "className": new_data.get("className", ""),
+                "silkId": _silk_of(new_data),
                 "status": "added",
             }
         if old_data is not None and new_data is None:
@@ -147,6 +161,7 @@ class DiffEngine:
                 "path": old_data.get("path", ""),
                 "name": old_data.get("name", ""),
                 "className": old_data.get("className", ""),
+                "silkId": _silk_of(old_data),
                 "status": "removed",
             }
         if old_data is None or new_data is None:
@@ -178,6 +193,7 @@ class DiffEngine:
             "path": new_data.get("path", ""),
             "name": new_data.get("name", ""),
             "className": new_data.get("className", ""),
+            "silkId": _silk_of(new_data),
             "status": "modified",
         }
         if prop_changes:

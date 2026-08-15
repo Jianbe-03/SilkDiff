@@ -289,10 +289,12 @@ ui.onPull:Connect(function()
 
         for _, entry in ipairs(staged) do
             local path = entry.path
+            local instanceData = instancesByPath[path]
 
             -- Removed from local → delete the instance in Roblox
             if entry.status == "removed" then
                 local inst = serializer:findInstanceByPath(path)
+                    or serializer:findInstanceBySilkId(entry.silkId or "")
                 if inst then
                     inst:Destroy()
                     appliedCount += 1
@@ -301,26 +303,43 @@ ui.onPull:Connect(function()
                     errorCount += 1
                 end
             else
-                local instanceData = instancesByPath[path]
-                if not instanceData then
-                    console:log("No local data for changed path: " .. path, "warn")
-                    errorCount += 1
+                -- Try to find the existing Roblox instance by silk id first —
+                -- this survives renames / moves (the diff path is the NEW
+                -- path but the instance still lives at the old one).
+                local instance = serializer:findInstanceBySilkId(entry.silkId or "")
+
+                if instance then
+                    -- Renamed / moved: bring the real instance to the new path
+                    local parts = string.split(path, ".")
+                    local newName = parts[#parts]
+                    local parentPath = table.concat(parts, ".", 1, #parts - 1)
+                    local newParent = serializer:findOrCreateInstanceByPath(parentPath, { path = parentPath })
+
+                    if instance.Name ~= newName then
+                        instance.Name = newName
+                    end
+                    if newParent and instance.Parent ~= newParent then
+                        instance.Parent = newParent
+                    end
                 else
-                    local instance = serializer:findOrCreateInstanceByPath(path, instanceData)
-                    if instance then
-                        local ok, err = pcall(function()
-                            serializer:applyInstanceData(instance, instanceData, entry)
-                        end)
-                        if ok then
-                            appliedCount += 1
-                        else
-                            console:log("Failed to apply " .. path .. ": " .. tostring(err), "error")
-                            errorCount += 1
-                        end
+                    -- Not found by id: locate by path or create it
+                    instance = serializer:findInstanceByPath(path)
+                        or serializer:findOrCreateInstanceByPath(path, instanceData)
+                end
+
+                if instance then
+                    local ok, err = pcall(function()
+                        serializer:applyInstanceData(instance, instanceData, entry)
+                    end)
+                    if ok then
+                        appliedCount += 1
                     else
-                        console:log("Could not find or create instance: " .. path, "error")
+                        console:log("Failed to apply " .. path .. ": " .. tostring(err), "error")
                         errorCount += 1
                     end
+                else
+                    console:log("Could not find or create instance: " .. path, "error")
+                    errorCount += 1
                 end
             end
         end

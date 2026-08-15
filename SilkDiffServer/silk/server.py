@@ -24,6 +24,21 @@ from .diff_engine import DiffEngine
 from .serializer import Serializer
 
 
+def _get_silk_id(inst: dict) -> str:
+    """Extract the silk id from a serialized instance (typed envelope aware)."""
+    silk = inst.get("silkId")
+    if silk:
+        return silk
+    attrs = inst.get("attributes") or {}
+    for key in ("SilkDiffId", "PestoId"):
+        sid = attrs.get(key)
+        if isinstance(sid, dict):
+            sid = sid.get("v")
+        if sid:
+            return sid
+    return ""
+
+
 class SilkDiffHandler(BaseHTTPRequestHandler):
     """Request handler - dependencies injected as class attributes."""
 
@@ -182,15 +197,60 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
             for svc_tree in roblox_trees:
                 _flatten(svc_tree)
 
+            # Match Roblox instances to local instances by SilkDiffId first
+            # (survives renames / moves), falling back to path matching.
+            # Index local instances by their silk id.
+            local_by_silk: dict = {}
+            for path, inst in local_map.items():
+                silk = _get_silk_id(inst)
+                if silk:
+                    local_by_silk[silk] = (path, inst)
+
+            # Pair up: roblox instance ↔ local instance
+            roblox_unmatched: dict = dict(roblox_map)
+            pairs: list = []  # (roblox_path, local_path, roblox_inst, local_inst)
+
+            for rpath, rinst in roblox_map.items():
+                r_silk = _get_silk_id(rinst)
+                matched = None
+                if r_silk and r_silk in local_by_silk:
+                    lpath, linst = local_by_silk[r_silk]
+                    # Same silk id but different path ⇒ rename / move
+                    if lpath != rpath:
+                        matched = (lpath, linst)
+                    elif lpath in roblox_map:
+                        matched = (lpath, linst)
+                # Fall back to exact path match
+                if matched is None and rpath in local_map:
+                    matched = (rpath, local_map[rpath])
+
+                if matched:
+                    lpath, linst = matched
+                    pairs.append((rpath, lpath, rinst, linst))
+                    roblox_unmatched.pop(rpath, None)
+
             # old = roblox, new = local  →  "added" means local has it, Roblox doesn't
             diffs = []
-            for path in sorted(set(roblox_map) | set(local_map)):
-                diff = self.diff_engine.compare_instances(
-                    roblox_map.get(path),
-                    local_map.get(path),
-                )
+
+            # Paired instances: compare directly (catches renames as "modified")
+            for rpath, lpath, rinst, linst in pairs:
+                diff = self.diff_engine.compare_instances(rinst, linst)
                 if diff:
                     diffs.append(diff)
+
+            # Unmatched roblox instances → removed from local
+            for rpath, rinst in roblox_unmatched.items():
+                diff = self.diff_engine.compare_instances(rinst, None)
+                if diff:
+                    diffs.append(diff)
+
+            # Local instances never matched → added (only in local)
+            matched_local_paths = {lp for _, lp, _, _ in pairs}
+            for lpath, linst in local_map.items():
+                if lpath not in matched_local_paths:
+                    diff = self.diff_engine.compare_instances(None, linst)
+                    if diff:
+                        diffs.append(diff)
 
             summary = self.diff_engine.summarize(diffs)
 
