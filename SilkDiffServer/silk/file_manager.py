@@ -91,6 +91,32 @@ class FileManager:
         parts = dot_path.split(".")
         return self.project_dir / Path(*parts)
 
+    @staticmethod
+    def _instance_silk(inst: dict) -> str:
+        """Extract the silk id from a serialized instance (envelope aware)."""
+        silk = inst.get("silkId")
+        if silk:
+            return silk
+        attrs = inst.get("attributes") or {}
+        for key in ("SilkDiffId", "PestoId"):
+            sid = attrs.get(key)
+            if isinstance(sid, dict):
+                sid = sid.get("v")
+            if sid:
+                return sid
+        return ""
+
+    def _find_unique_path(self, dot_path: str) -> str:
+        """Given a dot-path whose folder already exists, return a sibling
+        path with a numeric suffix that doesn't exist yet, matching Roblox
+        Studio's duplicate naming, e.g.
+        'Workspace.Part' → 'Workspace.Part (1)' → 'Workspace.Part (2)' …"""
+        base = dot_path
+        suffix = 1
+        while self._instance_dir(f"{base} ({suffix})").exists():
+            suffix += 1
+        return f"{base} ({suffix})"
+
     # ------------------------------------------------------------------
     # single instance
     # ------------------------------------------------------------------
@@ -191,8 +217,21 @@ class FileManager:
 
         # Added: full write of the attached instance
         if diff.get("status") == "added":
-            if instance:
-                self.write_instance(instance)
+            if not instance:
+                return
+
+            # If the target folder already exists with a DIFFERENT silk id,
+            # this is a duplicate (same name/path as an existing instance).
+            # Write it to a unique path instead of clobbering the original.
+            existing = self.read_instance(dot_path)
+            incoming_silk = self._instance_silk(instance)
+            existing_silk = self._instance_silk(existing) if existing else ""
+            if existing and existing_silk and incoming_silk and existing_silk != incoming_silk:
+                dot_path = self._find_unique_path(dot_path)
+                instance = dict(instance)
+                instance["path"] = dot_path
+
+            self.write_instance(instance)
             return
 
         # ── Rename / move detection ─────────────────────────────
@@ -201,16 +240,7 @@ class FileManager:
         # the shared SilkDiffId). Move the old folder to the new path so
         # we keep its properties / attributes / children instead of
         # creating an empty new folder.
-        silk_id = instance.get("silkId")
-        if not silk_id:
-            attrs = instance.get("attributes") or {}
-            for key in ("SilkDiffId", "PestoId"):
-                sid = attrs.get(key)
-                if isinstance(sid, dict):
-                    sid = sid.get("v")
-                if sid:
-                    silk_id = sid
-                    break
+        silk_id = self._instance_silk(instance)
         if silk_id:
             old_path = self.find_by_silk_id(silk_id)
             if old_path and old_path != dot_path:
