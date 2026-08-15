@@ -160,6 +160,125 @@ class FileManager:
             source_file = directory / self.config.get_source_file()
             source_file.write_text(data["source"], encoding="utf-8")
 
+    def apply_diff(self, diff: dict) -> None:
+        """Apply a partial diff entry to the local files.
+
+        Used when the user stages only some changes. The diff entry lists
+        *which* properties/attributes/tags/source changed; the actual new
+        values come from ``diff["instance"]`` (the full serialized instance
+        the plugin attached). Only the staged parts are merged into the
+        existing files on disk.
+
+        Supported keys on *diff*:
+            status "removed"   → delete instance folder
+            status "added"     → full write of diff["instance"]
+            propertyChanges    {key: {old, new, changeType}}  → merge keys from instance.properties
+            attributeChanges   {key: ...}                      → merge keys from instance.attributes
+            tagChanges         {added: [...], removed: [...]}  → adjust tags
+            sourceChanged      True + instance.source          → overwrite source
+        """
+        dot_path = diff.get("path", "")
+        if not dot_path:
+            return
+        directory = self._instance_dir(dot_path)
+        instance = diff.get("instance") or {}
+
+        # Removed: delete the folder entirely
+        if diff.get("status") == "removed":
+            if directory.exists():
+                shutil.rmtree(directory)
+            return
+
+        # Added: full write of the attached instance
+        if diff.get("status") == "added":
+            if instance:
+                self.write_instance(instance)
+            return
+
+        # ── Rename / move detection ─────────────────────────────
+        # When an instance is renamed or moved, the diff path is the NEW
+        # path, but the old folder may still exist on disk (matched via
+        # the shared SilkDiffId). Move the old folder to the new path so
+        # we keep its properties / attributes / children instead of
+        # creating an empty new folder.
+        silk_id = instance.get("silkId")
+        if not silk_id:
+            attrs = instance.get("attributes") or {}
+            for key in ("SilkDiffId", "PestoId"):
+                sid = attrs.get(key)
+                if isinstance(sid, dict):
+                    sid = sid.get("v")
+                if sid:
+                    silk_id = sid
+                    break
+        if silk_id:
+            old_path = self.find_by_silk_id(silk_id)
+            if old_path and old_path != dot_path:
+                old_dir = self._instance_dir(old_path)
+                if old_dir.exists():
+                    # Ensure the new parent exists before moving
+                    directory.parent.mkdir(parents=True, exist_ok=True)
+                    if directory.exists():
+                        shutil.rmtree(directory)
+                    old_dir.rename(directory)
+
+        # Modified: merge only the staged parts into the existing files
+        existing = self.read_instance(dot_path) or {}
+        props = dict(existing.get("properties") or {})
+        attrs = dict(existing.get("attributes") or {})
+        tags = list(existing.get("tags") or [])
+
+        # Property changes — new value taken from the attached instance data
+        for key, change in (diff.get("propertyChanges") or {}).items():
+            if change.get("changeType") == "removed" or change.get("new") is None:
+                props.pop(key, None)
+            else:
+                new_val = (instance.get("properties") or {}).get(key)
+                if new_val is not None:
+                    props[key] = new_val
+
+        # Attribute changes
+        for key, change in (diff.get("attributeChanges") or {}).items():
+            if change.get("changeType") == "removed" or change.get("new") is None:
+                attrs.pop(key, None)
+            else:
+                new_val = (instance.get("attributes") or {}).get(key)
+                if new_val is not None:
+                    attrs[key] = new_val
+
+        # Tag changes
+        tag_changes = diff.get("tagChanges") or {}
+        tag_set = set(tags)
+        for tag in tag_changes.get("added", []):
+            tag_set.add(tag)
+        for tag in tag_changes.get("removed", []):
+            tag_set.discard(tag)
+
+        # Write back only what changed
+        directory.mkdir(parents=True, exist_ok=True)
+        if diff.get("propertyChanges"):
+            self.serializer.to_file(
+                _normalize_dict(props),
+                directory / self.config.get_properties_file(),
+            )
+        if diff.get("attributeChanges"):
+            self.serializer.to_file(
+                _normalize_dict(attrs),
+                directory / self.config.get_attributes_file(),
+            )
+        if diff.get("tagChanges"):
+            self.serializer.to_file(
+                sorted(tag_set),
+                directory / self.config.get_tags_file(),
+            )
+
+        # Source change
+        if diff.get("sourceChanged"):
+            new_source = instance.get("source") or diff.get("newSource")
+            source_file = directory / self.config.get_source_file()
+            if new_source is not None:
+                source_file.write_text(new_source, encoding="utf-8")
+
     # ------------------------------------------------------------------
     # trees (recursive)
     # ------------------------------------------------------------------

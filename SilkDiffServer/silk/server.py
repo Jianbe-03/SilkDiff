@@ -105,16 +105,29 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
         })
 
     def _handle_push(self):
-        """POST /api/push - write changes to local files."""
+        """POST /api/push - write changes to local files.
+
+        Accepts either:
+          - full instance dicts (legacy / non-staged flow), or
+          - staged diff entries: {path, status, propertyChanges, ...,
+            instance: {full serialized instance}} — only the staged parts
+            are merged into the local files.
+        """
         try:
             body = self._read_body()
             items = body.get("data", [])
 
             written = 0
             for item in items:
-                instance_data = item.get("instance", item)
-                self.file_manager.write_instance(instance_data)
-                written += 1
+                # Staged diff entries carry an "instance" attachment and
+                # a "status" field
+                if isinstance(item, dict) and "status" in item and "path" in item:
+                    self.file_manager.apply_diff(item)
+                    written += 1
+                else:
+                    instance_data = item.get("instance", item)
+                    self.file_manager.write_instance(instance_data)
+                    written += 1
 
             self._send_json(200, {
                 "status": "ok",

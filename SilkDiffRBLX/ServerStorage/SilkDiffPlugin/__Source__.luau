@@ -139,17 +139,34 @@ ui.onPush:Connect(function()
     local entries = diff.entries or diff
     local summary = diffEngine:summarize(entries)
 
-    ui:showDiff(entries, "Push: " .. summary, function(approved)
-        if approved then
-            local pushOk, pushResult = httpClient:push(serializedChanges)
-            if pushOk then
-                instanceWatcher:clearChanges()
-                console:log("Changes pushed successfully!", "success")
-            else
-                console:log("Push failed: " .. tostring(pushResult), "error")
-            end
-        else
+    ui:showDiff(entries, "Push: " .. summary, function(staged)
+        if not staged then
             console:log("Push cancelled.", "warn")
+            return
+        end
+        if #staged == 0 then
+            console:log("Nothing staged — no changes pushed.", "warn")
+            return
+        end
+
+        -- Attach the full serialized instance to each staged entry so the
+        -- server can read the actual new values
+        for _, entry in ipairs(staged) do
+            for _, change in ipairs(serializedChanges) do
+                local inst = change.instance or change
+                if inst.path == entry.path then
+                    entry.instance = inst
+                    break
+                end
+            end
+        end
+
+        local pushOk, pushResult = httpClient:push(staged)
+        if pushOk then
+            instanceWatcher:clearChanges()
+            console:log(string.format("Pushed %d staged change(s) successfully!", #staged), "success")
+        else
+            console:log("Push failed: " .. tostring(pushResult), "error")
         end
     end)
 end)
@@ -188,17 +205,32 @@ ui.onForcePush:Connect(function()
     end
 
     console:log("Force Push diff ready: " .. summary, "info")
-    ui:showDiff(entries, "Force Push: " .. summary, function(approved)
-        if approved then
-            local pushOk, pushResult = httpClient:push(flat)
-            if pushOk then
-                instanceWatcher:clearChanges()
-                console:log("Force Push complete! " .. summary, "success")
-            else
-                console:log("Force Push failed: " .. tostring(pushResult), "error")
-            end
-        else
+    ui:showDiff(entries, "Force Push: " .. summary, function(staged)
+        if not staged then
             console:log("Force Push cancelled.", "warn")
+            return
+        end
+        if #staged == 0 then
+            console:log("Nothing staged — no changes pushed.", "warn")
+            return
+        end
+
+        -- Attach the full serialized instance to each staged entry
+        for _, entry in ipairs(staged) do
+            for _, inst in ipairs(flat) do
+                if inst.path == entry.path then
+                    entry.instance = inst
+                    break
+                end
+            end
+        end
+
+        local pushOk, pushResult = httpClient:push(staged)
+        if pushOk then
+            instanceWatcher:clearChanges()
+            console:log(string.format("Force Push complete! %d staged change(s).", #staged), "success")
+        else
+            console:log("Force Push failed: " .. tostring(pushResult), "error")
         end
     end)
 end)
@@ -234,29 +266,41 @@ ui.onPull:Connect(function()
     end
 
     console:log("Pull diff ready: " .. summary, "info")
-    ui:showDiff(entries, "Pull: " .. summary, function(approved)
-        if approved then
-            -- Build a set of changed paths so we only touch what was in the diff
-            local changedPaths: { [string]: boolean } = {}
-            for _, entry in ipairs(entries) do
-                local path = entry.path
-                if path then changedPaths[path] = true end
-            end
+    ui:showDiff(entries, "Pull: " .. summary, function(staged)
+        if not staged then
+            console:log("Pull cancelled.", "warn")
+            return
+        end
+        if #staged == 0 then
+            console:log("Nothing staged — no changes pulled.", "warn")
+            return
+        end
 
-            -- For "added" instances we also need to apply any parent that
-            -- doesn't exist yet — but the path itself is the one to apply.
-            -- Build a lookup from path → instanceData
-            local instancesByPath: { [string]: any } = {}
-            for _, inst in ipairs(data.instances or {}) do
-                if inst.path then
-                    instancesByPath[inst.path] = inst
+        -- Build a lookup from path → instanceData
+        local instancesByPath: { [string]: any } = {}
+        for _, inst in ipairs(data.instances or {}) do
+            if inst.path then
+                instancesByPath[inst.path] = inst
+            end
+        end
+
+        local appliedCount = 0
+        local errorCount = 0
+
+        for _, entry in ipairs(staged) do
+            local path = entry.path
+
+            -- Removed from local → delete the instance in Roblox
+            if entry.status == "removed" then
+                local inst = serializer:findInstanceByPath(path)
+                if inst then
+                    inst:Destroy()
+                    appliedCount += 1
+                else
+                    console:log("Cannot remove (already gone): " .. path, "warn")
+                    errorCount += 1
                 end
-            end
-
-            local appliedCount = 0
-            local errorCount = 0
-
-            for path, _ in pairs(changedPaths) do
+            else
                 local instanceData = instancesByPath[path]
                 if not instanceData then
                     console:log("No local data for changed path: " .. path, "warn")
@@ -265,7 +309,7 @@ ui.onPull:Connect(function()
                     local instance = serializer:findOrCreateInstanceByPath(path, instanceData)
                     if instance then
                         local ok, err = pcall(function()
-                            serializer:applyInstanceData(instance, instanceData)
+                            serializer:applyInstanceData(instance, instanceData, entry)
                         end)
                         if ok then
                             appliedCount += 1
@@ -279,13 +323,11 @@ ui.onPull:Connect(function()
                     end
                 end
             end
-
-            console:log(string.format("Pull complete! Applied %d instance(s) (%d errors).", appliedCount, errorCount), if errorCount > 0 then "warn" else "success")
-            instanceWatcher:clearChanges()
-        else
-            console:log("Pull cancelled.", "warn")
         end
-    end)
+
+        console:log(string.format("Pull complete! Applied %d instance(s) (%d errors).", appliedCount, errorCount), if errorCount > 0 then "warn" else "success")
+        instanceWatcher:clearChanges()
+    end, "pull")
 end)
 
 ---------------------------------------------------------------------------

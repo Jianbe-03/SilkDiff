@@ -419,22 +419,37 @@ function Serializer:_deserializeValue(envelope: any): any
 end
 
 ---------------------------------------------------------------------------
--- Apply local file instance data onto a Roblox instance
+-- Apply local file instance data onto a Roblox instance.
+--
+-- `data`   – full serialized instance (typed envelopes).
+-- `staged` – optional staged diff entry: { propertyChanges = {key=...},
+--            attributeChanges = {key=...}, tagChanges = {added, removed},
+--            sourceChanged = bool }. When provided, only the changes listed
+--            in the staged entry are applied; otherwise everything is applied.
 ---------------------------------------------------------------------------
 function Serializer:applyInstanceData(
     instance: Instance,
-    data: { [string]: any }
+    data: { [string]: any },
+    staged: { [string]: any }?
 )
     local properties = data.properties or {}
     local attributes = data.attributes or {}
     local tags = data.tags or {}
     local source = data.source
 
+    -- Determine which parts are staged (or apply everything if no filter)
+    local stagedProps = if staged and staged.propertyChanges then staged.propertyChanges else nil
+    local stagedAttrs = if staged and staged.attributeChanges then staged.attributeChanges else nil
+    local stagedTags  = if staged and staged.tagChanges then staged.tagChanges else nil
+    local stagedSource = if staged and staged.sourceChanged == true then true else nil
+
     -- Apply properties
-    -- Collect all property names first so we can apply in the right order
     local propNames: { string } = {}
     for name in pairs(properties) do
-        table.insert(propNames, name)
+        -- If a staged filter exists, only apply staged property keys
+        if stagedProps == nil or stagedProps[name] ~= nil then
+            table.insert(propNames, name)
+        end
     end
 
     -- Sort: CFrame last so it doesn't get overwritten by Position/Orientation
@@ -468,7 +483,8 @@ function Serializer:applyInstanceData(
     -- Apply attributes (only the ones in the local data)
     for name, envelope in pairs(attributes) do
         -- Skip protected internal attributes
-        if not string.find(name, "^RBX_") then
+        -- If a staged filter exists, only apply staged attribute keys
+        if not string.find(name, "^RBX_") and (stagedAttrs == nil or stagedAttrs[name] ~= nil) then
             local ok, val = pcall(function()
                 return self:_deserializeValue(envelope)
             end)
@@ -482,22 +498,54 @@ function Serializer:applyInstanceData(
         end
     end
 
-    -- Apply tags (clear first, then add)
-    pcall(function()
-        for _, tag in ipairs(CollectionService:GetTags(instance)) do
+    -- Apply tags
+    if stagedTags then
+        -- Only apply the staged add/remove operations
+        for _, tag in ipairs(stagedTags.removed or {}) do
             CollectionService:RemoveTag(instance, tag)
         end
-    end)
-    for _, tag in ipairs(tags) do
-        CollectionService:AddTag(instance, tag)
+        for _, tag in ipairs(stagedTags.added or {}) do
+            CollectionService:AddTag(instance, tag)
+        end
+    else
+        -- Full tag sync: clear then re-add
+        pcall(function()
+            for _, tag in ipairs(CollectionService:GetTags(instance)) do
+                CollectionService:RemoveTag(instance, tag)
+            end
+        end)
+        for _, tag in ipairs(tags) do
+            CollectionService:AddTag(instance, tag)
+        end
     end
 
     -- Apply source for script types
-    if source ~= nil and SCRIPT_CLASSES[instance.ClassName] then
-        pcall(function()
-            (instance :: any).Source = source
-        end)
+    if stagedSource == nil or stagedSource then
+        if source ~= nil and SCRIPT_CLASSES[instance.ClassName] then
+            pcall(function()
+                (instance :: any).Source = source
+            end)
+        end
     end
+end
+
+---------------------------------------------------------------------------
+-- Find a Roblox instance by its dot-separated path WITHOUT creating it.
+-- Returns nil if any segment doesn't exist.
+---------------------------------------------------------------------------
+function Serializer:findInstanceByPath(path: string): Instance?
+    if path == "" then return nil end
+
+    local parts = string.split(path, ".")
+    local current: Instance = game
+
+    for _, name in ipairs(parts) do
+        local child = current:FindFirstChild(name)
+        if not child then return nil end
+        current = child
+    end
+
+    return current
 end
 
 ---------------------------------------------------------------------------
