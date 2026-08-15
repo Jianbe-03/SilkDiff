@@ -190,7 +190,7 @@ ui.onForcePush:Connect(function()
     local flat = flatCurrentState()
     console:log(string.format("Force Push: %d instances — computing diff…", #flat), "info")
 
-    local ok, diff = httpClient:requestDiff(flat)
+    local ok, diff = httpClient:requestDiff(flat, true)
     if not ok then
         console:log("Force Push diff failed: " .. tostring(diff), "error")
         return

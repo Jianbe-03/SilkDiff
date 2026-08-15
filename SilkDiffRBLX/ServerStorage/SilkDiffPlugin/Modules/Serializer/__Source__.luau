@@ -399,22 +399,42 @@ function Serializer:serializeChanges(changes: { any }): { any }
     local seen: { [string]: boolean } = {}
 
     for _, change in ipairs(changes) do
-        local instance = change.instance
-        -- Reassign a fresh id if this instance's id is a duplicate of
-        -- one already seen in this batch (e.g. after duplicating)
-        local id = instance:GetAttribute("SilkDiffId")
-        if typeof(id) == "string" and id ~= "" then
-            if seen[id] then
-                self:_regenerateSilkId(instance)
-            else
-                seen[id] = true
+        -- Deleted instances: the live instance is gone, so send a stub
+        -- carrying the captured path + silk id so the server can match it
+        -- to the local folder and produce a "removed" diff.
+        if change.deleted then
+            table.insert(serialized, {
+                instance = {
+                    path      = change.path,
+                    name      = change.path:match("[^.]+$") or "",
+                    className = change.className or "Folder",
+                    silkId    = change.silkId or "",
+                    properties = {},
+                    attributes = {},
+                    tags       = {},
+                },
+                deleted   = true,
+                changes   = change.changes,
+                path      = change.path,
+            })
+        else
+            local instance = change.instance
+            -- Reassign a fresh id if this instance's id is a duplicate of
+            -- one already seen in this batch (e.g. after duplicating)
+            local id = instance:GetAttribute("SilkDiffId")
+            if typeof(id) == "string" and id ~= "" then
+                if seen[id] then
+                    self:_regenerateSilkId(instance)
+                else
+                    seen[id] = true
+                end
             end
+            table.insert(serialized, {
+                instance = self:serializeInstance(instance),
+                changes  = change.changes,
+                path     = change.path,
+            })
         end
-        table.insert(serialized, {
-            instance = self:serializeInstance(instance),
-            changes  = change.changes,
-            path     = change.path,
-        })
     end
 
     return serialized
@@ -632,6 +652,10 @@ end
 -- Find a Roblox instance by its dot-separated path, creating it (and
 -- any missing ancestors) if it doesn't exist yet.
 -- The instance's ClassName is read from the data dict.
+--
+-- NOTE: Only services can be direct children of game. A non-service
+-- instance whose path is root-level (Parent = "game") cannot exist in
+-- Roblox, so we refuse to create it and return nil.
 ---------------------------------------------------------------------------
 function Serializer:findOrCreateInstanceByPath(path: string, data: { [string]: any }): Instance?
     if path == "" then return nil end
@@ -641,6 +665,19 @@ function Serializer:findOrCreateInstanceByPath(path: string, data: { [string]: a
 
     for i, name in ipairs(parts) do
         local child = current:FindFirstChild(name)
+
+        -- The first path segment must be a service when it doesn't
+        -- already exist on game. Non-services can't be children of game.
+        if not child and current == game then
+            local okSvc, svc = pcall(function()
+                return game:GetService(name)
+            end)
+            if not okSvc then
+                return nil
+            end
+            child = svc
+        end
+
         if not child then
             -- Need to create it. The last part gets the ClassName from data;
             -- intermediate parts default to Folder.

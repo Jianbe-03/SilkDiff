@@ -70,6 +70,10 @@ function InstanceWatcher.new()
     --- SilkDiffIds we've seen, used to detect duplicates immediately
     self._seenIds = {} :: { [string]: boolean }
 
+    --- Deleted instances captured before they're destroyed
+    --- { [path]: { path: string, silkId: string, className: string } }
+    self._deletedInstances = {} :: { [string]: any }
+
     return self
 end
 
@@ -98,6 +102,19 @@ function InstanceWatcher:_registerSilkId(instance: Instance)
     else
         self._seenIds[id] = true
     end
+end
+
+---------------------------------------------------------------------------
+-- Internal: is this instance a Roblox service (i.e. a legit direct child
+-- of game)? Only services can live directly under game.
+---------------------------------------------------------------------------
+function InstanceWatcher._isServiceInstance(instance: Instance): boolean
+    if instance == game then return true end
+    -- Services are children of game and can be looked up via GetService
+    local ok, svc = pcall(function()
+        return game:GetService(instance.Name)
+    end)
+    return ok and svc == instance
 end
 
 ---------------------------------------------------------------------------
@@ -146,6 +163,27 @@ function InstanceWatcher:_recordNewInstance(instance: Instance)
 end
 
 ---------------------------------------------------------------------------
+-- Internal: drop changed-instance entries for a deleted subtree.
+-- *instances* were captured while the subtree was still alive. Used after
+-- a deletion to remove stale property-change entries (e.g. Roblox setting
+-- Parent to game while destroying the instance) so they aren't reported
+-- as moves alongside the deletion.
+---------------------------------------------------------------------------
+function InstanceWatcher:_dropDeletedSubtree(
+    root: Instance,
+    instances: { [Instance]: boolean }
+)
+    if self._changedInstances[root] then
+        self._changedInstances[root] = nil
+    end
+    for descendant, _ in pairs(self._changedInstances) do
+        if instances[descendant] then
+            self._changedInstances[descendant] = nil
+        end
+    end
+end
+
+---------------------------------------------------------------------------
 -- Internal: Hook up change listeners on a single instance
 ---------------------------------------------------------------------------
 function InstanceWatcher:_watchInstance(instance: Instance)
@@ -182,17 +220,50 @@ function InstanceWatcher:_watchInstance(instance: Instance)
 
     -- Removed children
     local removeConn = instance.ChildRemoved:Connect(function(child: Instance)
-        -- Capture path NOW before the parent reference is cleared
+        -- Capture path + identity NOW before the parent reference is cleared
         local childPath = self.getInstancePath(self, child)
+        local childSilk = child:GetAttribute("SilkDiffId")
+        local childClass = child.ClassName
+        -- Capture every instance in the subtree while they're alive
+        local subtreeInstances: { [Instance]: boolean } = { [child] = true }
+        for _, desc in ipairs(child:GetDescendants()) do
+            subtreeInstances[desc] = true
+        end
         -- Defer one frame: if Parent is nil the child was truly deleted,
         -- otherwise it was just reparented (moved) elsewhere.
         task.defer(function()
-            if child.Parent == nil then
+            local parent = child.Parent
+            if parent == nil then
                 -- Genuinely deleted – record on the parent so it shows in diffs
                 self:_recordChange(instance, "ChildDeleted", childPath)
+                -- Remember it so a push can report the removal to the server
+                self._deletedInstances[childPath] = {
+                    path = childPath,
+                    silkId = if typeof(childSilk) == "string" then childSilk else "",
+                    className = childClass,
+                }
+                -- Drop any earlier property-change entries for this child
+                -- (e.g. Roblox setting Parent to game while destroying it),
+                -- otherwise the push would report a move instead of a deletion.
+                self:_dropDeletedSubtree(child, subtreeInstances)
+            elseif parent == game then
+                -- Roblox moves deleted instances to game briefly before
+                -- destroying them; a non-service child parented to game is
+                -- effectively deleted (only services live directly under game).
+                if InstanceWatcher._isServiceInstance(child) then
+                    self:_recordChange(parent, "ChildMoved", childPath)
+                else
+                    self:_recordChange(instance, "ChildDeleted", childPath)
+                    self._deletedInstances[childPath] = {
+                        path = childPath,
+                        silkId = if typeof(childSilk) == "string" then childSilk else "",
+                        className = childClass,
+                    }
+                    self:_dropDeletedSubtree(child, subtreeInstances)
+                end
             else
                 -- Reparented/moved – record as moved on the child's new parent
-                self:_recordChange(child.Parent :: Instance, "ChildMoved", childPath)
+                self:_recordChange(parent, "ChildMoved", childPath)
             end
         end)
     end)
@@ -262,6 +333,20 @@ function InstanceWatcher:getChangedInstances(): { any }
         })
     end
 
+    -- Include deleted instances (they can't be serialized from the live
+    -- tree anymore, so we send the captured path + silk id instead)
+    for _, deleted in pairs(self._deletedInstances) do
+        table.insert(result, {
+            instance  = nil,
+            deleted   = true,
+            path      = deleted.path,
+            silkId    = deleted.silkId,
+            className = deleted.className,
+            changes   = { { changeType = "ChildDeleted", timestamp = os.clock() } },
+            firstSeen = os.clock(),
+        })
+    end
+
     -- Sort alphabetically by path for deterministic ordering
     table.sort(result, function(a: { path: string }, b: { path: string })
         return a.path < b.path
@@ -274,7 +359,7 @@ end
 -- Quick boolean check: are there any pending changes?
 ---------------------------------------------------------------------------
 function InstanceWatcher:hasChanges(): boolean
-    return next(self._changedInstances) ~= nil
+    return next(self._changedInstances) ~= nil or next(self._deletedInstances) ~= nil
 end
 
 ---------------------------------------------------------------------------
@@ -285,6 +370,9 @@ function InstanceWatcher:getChangeCount(): number
     for _ in pairs(self._changedInstances) do
         count += 1
     end
+    for _ in pairs(self._deletedInstances) do
+        count += 1
+    end
     return count
 end
 
@@ -293,6 +381,7 @@ end
 ---------------------------------------------------------------------------
 function InstanceWatcher:clearChanges()
     self._changedInstances = {}
+    self._deletedInstances = {}
 end
 
 ---------------------------------------------------------------------------

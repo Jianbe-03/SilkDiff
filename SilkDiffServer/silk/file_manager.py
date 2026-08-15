@@ -313,11 +313,37 @@ class FileManager:
     # trees (recursive)
     # ------------------------------------------------------------------
 
-    def write_tree(self, tree: dict) -> None:
-        """Recursively write an entire instance tree to disk."""
-        self.write_instance(tree)
+    def write_tree(self, tree: dict, _siblings: Optional[dict] = None, _parent_path: str = "") -> None:
+        """Recursively write an entire instance tree to disk.
+
+        Roblox allows siblings with the same name (e.g. two Parts both
+        called "Part"). On disk that would collide, so when a sibling
+        shares a name but has a different silk id we write it to a unique
+        path ('Part (1)') instead of clobbering. Children are re-parented
+        to follow their parent's (possibly unique) path.
+        """
+        siblings = _siblings if _siblings is not None else {}
+
+        # Build this node's path from the parent's actual path + its name.
+        # The serialized path's last segment is the instance's Name.
+        name = tree.get("path", "").split(".")[-1]
+
+        dot_path = f"{_parent_path}.{name}" if _parent_path else name
+        silk = self._instance_silk(tree)
+
+        if siblings.get(dot_path) and siblings[dot_path] != silk:
+            dot_path = self._find_unique_path(dot_path)
+
+        siblings[dot_path] = silk
+
+        instance = dict(tree)
+        instance["path"] = dot_path
+        instance.pop("children", None)
+        self.write_instance(instance)
+
+        child_siblings: dict = {}
         for child in tree.get("children", []):
-            self.write_tree(child)
+            self.write_tree(child, child_siblings, dot_path)
 
     def read_tree(self, root_path: str) -> Optional[dict]:
         """Recursively read an instance tree from disk."""

@@ -16,6 +16,7 @@ This command:
 """
 
 import os
+import shutil
 import uuid
 from pathlib import Path
 
@@ -25,6 +26,15 @@ from silk.default_properties import DEFAULT_PROPERTIES
 
 # ClassNames that carry source code
 SCRIPT_CLASSES = {"Script", "LocalScript", "ModuleScript"}
+
+# ClassNames that can live directly under game (the services)
+SERVICE_CLASSES = {
+    "Workspace", "Players", "Lighting", "MaterialService",
+    "ReplicatedFirst", "ReplicatedStorage", "ServerScriptService",
+    "ServerStorage", "StarterGui", "StarterPack", "StarterPlayer",
+    "Teams", "SoundService", "TextChatService", "LocalizationService",
+    "TestService", "VoiceChatService", "VRService",
+}
 
 # Default source stubs per script type
 DEFAULT_SOURCE = {
@@ -76,7 +86,19 @@ def cmd_create(args):
     instance_dir.mkdir(parents=True, exist_ok=True)
 
     # ── figure out the parent's Name (last segment) ─────────────
-    parent_name = Path(parent_path).name or "game"
+    # Only services live directly under game; every other instance
+    # must be inside a service folder, so a root-level parent is only
+    # valid when the class is a service.
+    if not parent_path or parent_path == ".":
+        if class_name not in SERVICE_CLASSES:
+            print(f"[SilkDiff] ✗ Non-service instances cannot be created at the project root.")
+            print(f"[SilkDiff]   Only services (Workspace, ServerStorage, …) live directly under game.")
+            print(f"[SilkDiff]   Choose a parent like ./Workspace or ./ServerStorage.")
+            shutil.rmtree(instance_dir, ignore_errors=True)
+            return
+        parent_name = "game"
+    else:
+        parent_name = Path(parent_path).name
 
     # ── build properties from defaults ──────────────────────────
     props = dict(DEFAULT_PROPERTIES.get(class_name, {}))

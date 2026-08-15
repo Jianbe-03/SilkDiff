@@ -266,14 +266,38 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
             self._send_json(500, {"error": str(exc)})
 
     def _handle_diff(self):
-        """POST /api/diff - compare Roblox data against local files."""
+        """POST /api/diff - compare Roblox data against local files.
+
+        With ``body.full`` set (Force Push), the entire Roblox state is
+        sent and any local instance missing from it is reported as removed.
+        """
         try:
             body = self._read_body()
             roblox_items = body.get("data", [])
+            full = body.get("full") is True
 
             diffs = []
+            seen_paths: set = set()
+
             for roblox_item in roblox_items:
                 inst = roblox_item.get("instance", roblox_item)
+
+                # Deleted instance: the plugin sends a stub with a "deleted"
+                # flag + the captured path/silk id. Match the local folder and
+                # emit a "removed" diff.
+                if roblox_item.get("deleted"):
+                    local_path = self.file_manager.find_by_silk_id(inst.get("silkId") or "") or inst.get("path", "")
+                    local_inst = self.file_manager.read_instance(local_path) if local_path else None
+                    if local_inst:
+                        diffs.append({
+                            "path": local_path,
+                            "name": local_inst.get("name") or "",
+                            "className": local_inst.get("className") or "",
+                            "silkId": _get_silk_id(local_inst),
+                            "status": "removed",
+                        })
+                        seen_paths.add(local_path)
+                    continue
 
                 # Prefer SilkDiffId-based lookup (survives renames / moves)
                 silk_id = inst.get("silkId") or (inst.get("attributes") or {}).get("SilkDiffId")
@@ -283,9 +307,41 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
                 else:
                     local_inst = self.file_manager.read_instance(inst.get("path", ""))
 
+                if local_inst:
+                    seen_paths.add(inst.get("path", ""))
+
                 diff = self.diff_engine.compare_instances(local_inst, inst)
                 if diff:
                     diffs.append(diff)
+
+            # Full comparison (Force Push): any local instance not present
+            # in the Roblox state has been deleted → report as removed.
+            if full:
+                local_map: dict = {}
+                for path in self.file_manager.get_all_instance_paths():
+                    li = self.file_manager.read_instance(path)
+                    if li:
+                        local_map[path] = li
+
+                roblox_silks = set()
+                for roblox_item in roblox_items:
+                    inst = roblox_item.get("instance", roblox_item)
+                    s = _get_silk_id(inst)
+                    if s:
+                        roblox_silks.add(s)
+
+                for path, li in local_map.items():
+                    silk = _get_silk_id(li)
+                    # Skip if matched by path or silk id, or already reported
+                    if path in seen_paths or silk in roblox_silks:
+                        continue
+                    diffs.append({
+                        "path": path,
+                        "name": li.get("name") or "",
+                        "className": li.get("className") or "",
+                        "silkId": silk,
+                        "status": "removed",
+                    })
 
             summary = self.diff_engine.summarize(diffs)
 
