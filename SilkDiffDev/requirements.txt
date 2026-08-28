@@ -1,3 +1,4 @@
 # SilkDiffDev - developer tooling dependencies
 # (not shipped to users; only needed to run upload_icons.py)
 cairosvg>=2.7
+requests>=2.28

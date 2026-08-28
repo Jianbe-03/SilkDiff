@@ -20,10 +20,9 @@ import os
 import shutil
 import subprocess
 import sys
-import urllib.error
-import urllib.request
-import uuid
 from pathlib import Path
+
+import requests
 
 ASSETS_ENDPOINT = "https://apis.roblox.com/assets/v1/assets"
 DEFAULT_ICON_DIR = Path(__file__).resolve().parent / "icons"
@@ -60,74 +59,89 @@ def svg_to_png(svg_path: Path, size: int) -> bytes:
             "(pip install cairosvg) or librsvg (brew install librsvg)."
         )
 
-    result = subprocess.run(
-        [rsvg, "-w", str(size), "-h", str(size), str(svg_path), "-o", "-"],
-        capture_output=True,
-        check=True,
-    )
-    return result.stdout
+    import tempfile
 
-
-# ── Multipart form data (no external deps) ──────────────────────
-
-def _build_multipart(fields: dict, files: dict) -> tuple[bytes, str]:
-    boundary = "----SilkDiff" + uuid.uuid4().hex
-    body = bytearray()
-
-    for name, value in fields.items():
-        body += f"--{boundary}\r\n".encode()
-        body += f'Content-Disposition: form-data; name="{name}"\r\n\r\n'.encode()
-        body += str(value).encode() + b"\r\n"
-
-    for name, (filename, content, content_type) in files.items():
-        body += f"--{boundary}\r\n".encode()
-        body += (
-            f'Content-Disposition: form-data; name="{name}"; '
-            f'filename="{filename}"\r\n'
-        ).encode()
-        body += f"Content-Type: {content_type}\r\n\r\n".encode()
-        body += content + b"\r\n"
-
-    body += f"--{boundary}--\r\n".encode()
-    return bytes(body), f"multipart/form-data; boundary={boundary}"
+    with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as tmp:
+        tmp_path = tmp.name
+    try:
+        subprocess.run(
+            [rsvg, "-w", str(size), "-h", str(size), str(svg_path), "-o", tmp_path],
+            capture_output=True,
+            check=True,
+        )
+        with open(tmp_path, "rb") as f:
+            return f.read()
+    finally:
+        os.remove(tmp_path)
 
 
 # ── Open Cloud upload ───────────────────────────────────────────
 
 def upload_png(api_key: str, creator: dict, png_bytes: bytes, name: str) -> int:
     """Upload a PNG as a Decal asset. Returns the numeric asset id."""
-    body, content_type = _build_multipart(
-        fields={
-            "assetType": "Decal",
-            "name": name,
-            "creationContext": json.dumps({"creator": creator}),
-        },
-        files={
-            "file": ("icon.png", png_bytes, "image/png"),
-        },
-    )
+    request_payload = {
+        "assetType": "Decal",
+        "displayName": name,
+        "creationContext": {"creator": creator},
+    }
 
-    req = urllib.request.Request(
+    resp = requests.post(
         ASSETS_ENDPOINT,
-        data=body,
-        method="POST",
-        headers={
-            "x-api-key": api_key,
-            "Content-Type": content_type,
+        headers={"x-api-key": api_key},
+        files={
+            "request": (None, json.dumps(request_payload), "application/json"),
+            "fileContent": ("icon.png", png_bytes, "image/png"),
         },
+        timeout=60,
     )
 
-    try:
-        with urllib.request.urlopen(req, timeout=60) as resp:
-            data = json.loads(resp.read().decode())
-    except urllib.error.HTTPError as exc:
-        detail = exc.read().decode(errors="replace")
-        raise RuntimeError(f"Upload failed ({exc.code}): {detail}") from exc
+    if resp.status_code >= 400:
+        raise RuntimeError(f"Upload failed ({resp.status_code}): {resp.text}")
+
+    data = resp.json()
+
+    # The Assets API is asynchronous: the initial POST returns an operation
+    # object with a `path` to poll until `done` is true, then the result
+    # contains the assetId.
+    operation_path = data.get("path")
+    if operation_path:
+        return _poll_operation(api_key, operation_path)
 
     asset_id = data.get("assetId")
     if asset_id is None:
         raise RuntimeError(f"Unexpected response: {data}")
     return int(asset_id)
+
+
+def _poll_operation(api_key: str, operation_path: str, max_attempts: int = 60) -> int:
+    """Poll an async operation until it completes and return the assetId."""
+    import time
+
+    # The Assets API returns a relative operation path such as
+    # ``operations/<operationId>``.  It is relative to ``/assets/v1/``;
+    # appending it directly to the hostname produces the invalid host
+    # ``apis.roblox.comoperations``.
+    url = f"{ASSETS_ENDPOINT.rsplit('/', 1)[0]}/{operation_path.lstrip('/')}"
+    for attempt in range(max_attempts):
+        resp = requests.get(
+            url,
+            headers={"x-api-key": api_key},
+            timeout=30,
+        )
+        if resp.status_code >= 400:
+            raise RuntimeError(f"Operation poll failed ({resp.status_code}): {resp.text}")
+
+        data = resp.json()
+        if data.get("done"):
+            response = data.get("response") or {}
+            asset_id = response.get("assetId")
+            if asset_id is None:
+                raise RuntimeError(f"Operation completed without assetId: {data}")
+            return int(asset_id)
+
+        time.sleep(1)
+
+    raise RuntimeError(f"Operation did not complete after {max_attempts}s: {data}")
 
 
 # ── Main ────────────────────────────────────────────────────────
@@ -169,9 +183,9 @@ def main() -> int:
         parser.error("Provide --user-id or --group-id")
 
     creator = (
-        {"type": "User", "targetId": str(args.user_id)}
+        {"userId": str(args.user_id)}
         if args.user_id
-        else {"type": "Group", "targetId": str(args.group_id)}
+        else {"groupId": str(args.group_id)}
     )
 
     icons_dir = Path(args.icons_dir)
