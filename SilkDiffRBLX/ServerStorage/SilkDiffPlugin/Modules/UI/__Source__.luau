@@ -120,10 +120,10 @@ function UI.new(pluginInstance: Plugin, toolbar: PluginToolbar, settings)
     self._buttons  = {} :: { [string]: PluginToolbarButton }
 
     -- Public signals (other modules connect to these)
-    self.onPush      = Signal.new()
-    self.onForcePush = Signal.new()
-    self.onPull      = Signal.new()
-    self.onExport    = Signal.new()
+    self.onPush           = Signal.new()
+    self.onWatchlessPush  = Signal.new()
+    self.onPull           = Signal.new()
+    self.onExport         = Signal.new()
 
     -- Build everything
     self:_createToolbarButtons()
@@ -300,12 +300,12 @@ function UI:_createToolbarButtons()
     task.wait()
 
     -- Watchless Push (full state comparison, no watcher needed)
-    self._buttons.forcePush = self._toolbar:CreateButton(
-        "SilkDiff_ForcePush", "Watchless Push: compare entire Roblox state against local files without using the watcher.",
+    self._buttons.watchlessPush = self._toolbar:CreateButton(
+        "SilkDiff_WatchlessPush", "Watchless Push: compare entire Roblox state against local files without using the watcher.",
         "rbxassetid://6034328955", "Watchless Push"
     )
-    self._buttons.forcePush.Click:Connect(function()
-        self.onForcePush:Fire()
+    self._buttons.watchlessPush.Click:Connect(function()
+        self.onWatchlessPush:Fire()
     end)
 
     task.wait()

@@ -180,7 +180,7 @@ end)
 -- flow when teammates made changes while your machine was off — the
 -- watcher would have missed those events, but Watchless Push sees them all.
 ---------------------------------------------------------------------------
-ui.onForcePush:Connect(function()
+ui.onWatchlessPush:Connect(function()
     if not httpClient:ping() then
         console:log("Cannot reach SilkDiff server at " .. settings:getServerUrl(), "error")
         return
