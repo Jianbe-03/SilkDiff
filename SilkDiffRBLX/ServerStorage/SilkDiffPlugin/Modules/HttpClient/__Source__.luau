@@ -281,7 +281,7 @@ end
 ---------------------------------------------------------------------------
 -- Request a diff between the current Roblox state and local files.
 -- `full` – when true the server also reports local instances that are
--- missing from the Roblox state (used by Force Push to catch deletions).
+-- missing from the Roblox state (used by Watchless Push to catch deletions).
 ---------------------------------------------------------------------------
 function HttpClient:requestDiff(localData: any, full: boolean?): (boolean, any)
     return self:_post("/api/diff", {

@@ -4,7 +4,7 @@
 
     Creates and manages all visual elements for the SilkDiff plugin:
 
-        Toolbar   – Push, Pull, Export, Settings buttons in the Studio ribbon
+        Toolbar   – Push, Pull, Export, Settings, Console buttons in the Studio ribbon
         Settings  – A dockable settings panel with all 8 configurable options
         DiffView  – A floating window that shows diffs before push / pull
 
@@ -13,7 +13,7 @@
 
     Usage:
         local UI = require(...)
-        local ui = UI.new(plugin, toolbar, settings)
+        local ui = UI.new(plugin, toolbar, settings, console)
 
         ui.onPush:Connect(function() ... end)
         ui.onPull:Connect(function() ... end)
@@ -21,6 +21,21 @@
 ]]
 
 local Signal = require(script.Parent:WaitForChild("Signal"))
+
+---------------------------------------------------------------------------
+-- Toolbar icon asset IDs.
+--
+-- Paste the output of SilkDiffDev/upload_icons.py here to swap in new
+-- icons. The keys match the SVG file stems in SilkDiffDev/icons/.
+---------------------------------------------------------------------------
+local ICONS = {
+    console = "rbxassetid://138134964774396",
+    export = "rbxassetid://83429520231318",
+    pull = "rbxassetid://116145337774967",
+    push = "rbxassetid://77290346356349",
+    settings = "rbxassetid://134375546347315",
+    watchlessPush = "rbxassetid://125663871902638",
+}
 
 ---------------------------------------------------------------------------
 -- Line-by-line diff via Longest Common Subsequence
@@ -110,20 +125,21 @@ local PAD         = 8
 ---------------------------------------------------------------------------
 -- Constructor
 ---------------------------------------------------------------------------
-function UI.new(pluginInstance: Plugin, toolbar: PluginToolbar, settings)
+function UI.new(pluginInstance: Plugin, toolbar: PluginToolbar, settings, console)
     local self = setmetatable({}, UI)
 
     self._plugin   = pluginInstance
     self._toolbar  = toolbar
     self._settings = settings
+    self._console  = console
     self._widgets  = {} :: { [string]: DockWidgetPluginGui }
     self._buttons  = {} :: { [string]: PluginToolbarButton }
 
     -- Public signals (other modules connect to these)
-    self.onPush      = Signal.new()
-    self.onForcePush = Signal.new()
-    self.onPull      = Signal.new()
-    self.onExport    = Signal.new()
+    self.onPush           = Signal.new()
+    self.onWatchlessPush  = Signal.new()
+    self.onPull           = Signal.new()
+    self.onExport         = Signal.new()
 
     -- Build everything
     self:_createToolbarButtons()
@@ -285,13 +301,13 @@ function UI:_dropdown(
 end
 
 ---------------------------------------------------------------------------
--- Toolbar buttons (Push · Pull · Export · Settings)
+-- Toolbar buttons (Push · Pull · Export · Settings · Console)
 ---------------------------------------------------------------------------
 function UI:_createToolbarButtons()
     -- Push
     self._buttons.push = self._toolbar:CreateButton(
         "SilkDiff_Push", "Push watched changes to local machine",
-        "rbxassetid://6031280882", "Push"
+        ICONS.push, "Push"
     )
     self._buttons.push.Click:Connect(function()
         self.onPush:Fire()
@@ -299,13 +315,13 @@ function UI:_createToolbarButtons()
 
     task.wait()
 
-    -- Force Push (full state comparison, no watcher needed)
-    self._buttons.forcePush = self._toolbar:CreateButton(
-        "SilkDiff_ForcePush", "Force Push: compare entire Roblox state against local files and force a push.",
-        "rbxassetid://6034328955", "Force Push"
+    -- Watchless Push (full state comparison, no watcher needed)
+    self._buttons.watchlessPush = self._toolbar:CreateButton(
+        "SilkDiff_WatchlessPush", "Watchless Push: compare entire Roblox state against local files without using the watcher.",
+        ICONS.watchlessPush, "Watchless Push"
     )
-    self._buttons.forcePush.Click:Connect(function()
-        self.onForcePush:Fire()
+    self._buttons.watchlessPush.Click:Connect(function()
+        self.onWatchlessPush:Fire()
     end)
 
     task.wait()
@@ -313,7 +329,7 @@ function UI:_createToolbarButtons()
     -- Pull
     self._buttons.pull = self._toolbar:CreateButton(
         "SilkDiff_Pull", "Pull changes from local machine",
-        "rbxassetid://6031280882", "Pull"
+        ICONS.pull, "Pull"
     )
     self._buttons.pull.Click:Connect(function()
         self.onPull:Fire()
@@ -324,7 +340,7 @@ function UI:_createToolbarButtons()
     -- Export (full game → local)
     self._buttons.export = self._toolbar:CreateButton(
         "SilkDiff_Export", "Export entire game to local machine",
-        "rbxassetid://6034328955", "Export"
+        ICONS.export, "Export"
     )
     self._buttons.export.Click:Connect(function()
         self.onExport:Fire()
@@ -335,11 +351,22 @@ function UI:_createToolbarButtons()
     -- Settings
     self._buttons.settings = self._toolbar:CreateButton(
         "SilkDiff_Settings", "Open SilkDiff settings",
-        "rbxassetid://6031280882", "Settings"
+        ICONS.settings, "Settings"
     )
     self._buttons.settings.Click:Connect(function()
         local w = self._widgets.settings
         w.Enabled = not w.Enabled
+    end)
+
+    task.wait()
+
+    -- Console
+    self._buttons.console = self._toolbar:CreateButton(
+        "SilkDiff_Console", "Open SilkDiff Console",
+        ICONS.console, "Console"
+    )
+    self._buttons.console.Click:Connect(function()
+        self._console:toggle()
     end)
 end
 
@@ -555,9 +582,10 @@ function UI:_createHelpWidget()
 
     actionRow("Push", "Sends your changed instances from Roblox to the local files. " ..
         "You review the diff in the viewer and only the staged changes are written to disk.")
-    actionRow("Force Push", "Compares the ENTIRE Roblox state against your local files and " ..
-        "shows every difference. Use this when the watcher may have missed changes (e.g. " ..
-        "changes made while Studio was closed, or changes made by another team member while you were offline). It's a full comparison, no watcher needed.")
+    actionRow("Watchless Push", "Compares the ENTIRE Roblox state against your local files and " ..
+        "shows every difference, without using the watcher. Use this when the watcher may " ..
+        "have missed changes (e.g. changes made while Studio was closed, or changes made " ..
+        "by another team member while you were offline). It's a full comparison.")
     actionRow("Pull", "Applies local file changes back into Roblox. The diff shows what will " ..
         "change in Studio, and only the staged changes are applied to your instances.")
     actionRow("Export", "Wipes your entire local tree and rebuilds it from the current Roblox " ..
@@ -1413,7 +1441,7 @@ end
 ---------------------------------------------------------------------------
 function UI:destroy()
     self.onPush:Destroy()
-    self.onForcePush:Destroy()
+    self.onWatchlessPush:Destroy()
     self.onPull:Destroy()
     self.onExport:Destroy()
 

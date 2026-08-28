@@ -54,9 +54,9 @@ local httpClient      = HttpClient.new(settings)
 local serializer      = Serializer.new(settings)
 local diffEngine      = DiffEngine.new()
 local instanceWatcher = InstanceWatcher.new()
-local ui              = UI.new(plugin, toolbar, settings)
+local console         = Console.new(plugin, settings)
+local ui              = UI.new(plugin, toolbar, settings, console)
 local popup           = Popup.new(plugin)
-local console         = Console.new(plugin, toolbar, settings)
 
 -- Now that console exists, give HttpClient a reference for debug logging
 httpClient:setConsole(console)
@@ -172,27 +172,27 @@ ui.onPush:Connect(function()
 end)
 
 ---------------------------------------------------------------------------
--- FORCE PUSH  (Compare entire Roblox state against local files → push)
+-- WATCHLESS PUSH  (Compare entire Roblox state against local files → push)
 --
--- Unlike Push (which only sends watcher-tracked changes), Force Push
+-- Unlike Push (which only sends watcher-tracked changes), Watchless Push
 -- serializes the *whole* current Roblox game, diffs it against whatever
 -- is on disk, and lets you push every difference. This is the correct
 -- flow when teammates made changes while your machine was off — the
--- watcher would have missed those events, but Force Push sees them all.
+-- watcher would have missed those events, but Watchless Push sees them all.
 ---------------------------------------------------------------------------
-ui.onForcePush:Connect(function()
+ui.onWatchlessPush:Connect(function()
     if not httpClient:ping() then
         console:log("Cannot reach SilkDiff server at " .. settings:getServerUrl(), "error")
         return
     end
 
-    console:log("Force Push: serializing entire Roblox state…", "info")
+    console:log("Watchless Push: serializing entire Roblox state…", "info")
     local flat = flatCurrentState()
-    console:log(string.format("Force Push: %d instances — computing diff…", #flat), "info")
+    console:log(string.format("Watchless Push: %d instances — computing diff…", #flat), "info")
 
     local ok, diff = httpClient:requestDiff(flat, true)
     if not ok then
-        console:log("Force Push diff failed: " .. tostring(diff), "error")
+        console:log("Watchless Push diff failed: " .. tostring(diff), "error")
         return
     end
 
@@ -200,14 +200,14 @@ ui.onForcePush:Connect(function()
     local summary = diffEngine:summarize(entries)
 
     if #entries == 0 then
-        console:log("Force Push: local files already match Roblox. Nothing to push.", "success")
+        console:log("Watchless Push: local files already match Roblox. Nothing to push.", "success")
         return
     end
 
-    console:log("Force Push diff ready: " .. summary, "info")
-    ui:showDiff(entries, "Force Push: " .. summary, function(staged)
+    console:log("Watchless Push diff ready: " .. summary, "info")
+    ui:showDiff(entries, "Watchless Push: " .. summary, function(staged)
         if not staged then
-            console:log("Force Push cancelled.", "warn")
+            console:log("Watchless Push cancelled.", "warn")
             return
         end
         if #staged == 0 then
@@ -228,9 +228,9 @@ ui.onForcePush:Connect(function()
         local pushOk, pushResult = httpClient:push(staged)
         if pushOk then
             instanceWatcher:clearChanges()
-            console:log(string.format("Force Push complete! %d staged change(s).", #staged), "success")
+            console:log(string.format("Watchless Push complete! %d staged change(s).", #staged), "success")
         else
-            console:log("Force Push failed: " .. tostring(pushResult), "error")
+            console:log("Watchless Push failed: " .. tostring(pushResult), "error")
         end
     end)
 end)
