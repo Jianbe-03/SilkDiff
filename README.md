@@ -217,7 +217,9 @@ Defaults to `127.0.0.1:6969` and the current working directory if no flags are g
 
 ### 3. Install the plugin
 
-The plugin lives in `SilkDiffRBLX/ServerStorage/SilkDiffPlugin`. Sync it
+you can download the live version of the plugin here: https://create.roblox.com/store/asset/76080430015146/SilkDiff
+
+For contributing the plugin lives in `SilkDiffRBLX/ServerStorage/SilkDiffPlugin`. Sync it
 into Roblox Studio using Pesto, then export it as a `.rbxm` plugin file,
 or run it directly in a development place.
 
