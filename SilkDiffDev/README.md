@@ -8,7 +8,7 @@ them to PNGs and uploads them to Roblox.
 
 | Path | Purpose |
 |------|---------|
-| `icons/` | SVG sources for the toolbar buttons (Push, Watchless Push, Pull, Export, Settings) |
+| `icons/` | SVG sources for the toolbar buttons (Push, Watchless Push, Pull, Export, Settings, Console) |
 | `upload_icons.py` | Converts SVGs → PNGs and uploads them via the Open Cloud Assets API |
 | `requirements.txt` | Dev-only Python dependencies (`cairosvg`) |
 

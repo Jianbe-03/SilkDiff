@@ -4,7 +4,7 @@
 
     Creates and manages all visual elements for the SilkDiff plugin:
 
-        Toolbar   – Push, Pull, Export, Settings buttons in the Studio ribbon
+        Toolbar   – Push, Pull, Export, Settings, Console buttons in the Studio ribbon
         Settings  – A dockable settings panel with all 8 configurable options
         DiffView  – A floating window that shows diffs before push / pull
 
@@ -13,7 +13,7 @@
 
     Usage:
         local UI = require(...)
-        local ui = UI.new(plugin, toolbar, settings)
+        local ui = UI.new(plugin, toolbar, settings, console)
 
         ui.onPush:Connect(function() ... end)
         ui.onPull:Connect(function() ... end)
@@ -29,11 +29,12 @@ local Signal = require(script.Parent:WaitForChild("Signal"))
 -- icons. The keys match the SVG file stems in SilkDiffDev/icons/.
 ---------------------------------------------------------------------------
 local ICONS = {
-    export = "rbxassetid://102520288425132",
-    pull = "rbxassetid://71534041503611",
-    push = "rbxassetid://119609302545146",
-    settings = "rbxassetid://88944023017265",
-    watchlessPush = "rbxassetid://117370316431424",
+    console = "rbxassetid://138134964774396",
+    export = "rbxassetid://83429520231318",
+    pull = "rbxassetid://116145337774967",
+    push = "rbxassetid://77290346356349",
+    settings = "rbxassetid://134375546347315",
+    watchlessPush = "rbxassetid://125663871902638",
 }
 
 ---------------------------------------------------------------------------
@@ -124,12 +125,13 @@ local PAD         = 8
 ---------------------------------------------------------------------------
 -- Constructor
 ---------------------------------------------------------------------------
-function UI.new(pluginInstance: Plugin, toolbar: PluginToolbar, settings)
+function UI.new(pluginInstance: Plugin, toolbar: PluginToolbar, settings, console)
     local self = setmetatable({}, UI)
 
     self._plugin   = pluginInstance
     self._toolbar  = toolbar
     self._settings = settings
+    self._console  = console
     self._widgets  = {} :: { [string]: DockWidgetPluginGui }
     self._buttons  = {} :: { [string]: PluginToolbarButton }
 
@@ -299,7 +301,7 @@ function UI:_dropdown(
 end
 
 ---------------------------------------------------------------------------
--- Toolbar buttons (Push · Pull · Export · Settings)
+-- Toolbar buttons (Push · Pull · Export · Settings · Console)
 ---------------------------------------------------------------------------
 function UI:_createToolbarButtons()
     -- Push
@@ -354,6 +356,17 @@ function UI:_createToolbarButtons()
     self._buttons.settings.Click:Connect(function()
         local w = self._widgets.settings
         w.Enabled = not w.Enabled
+    end)
+
+    task.wait()
+
+    -- Console
+    self._buttons.console = self._toolbar:CreateButton(
+        "SilkDiff_Console", "Open SilkDiff Console",
+        ICONS.console, "Console"
+    )
+    self._buttons.console.Click:Connect(function()
+        self._console:toggle()
     end)
 end
 

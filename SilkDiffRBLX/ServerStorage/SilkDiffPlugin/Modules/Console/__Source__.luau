@@ -7,7 +7,7 @@
 
     Usage:
         local Console = require(...)
-        local console = Console.new(pluginInstance, toolbar)
+        local console = Console.new(pluginInstance, settings)
 
         console:log("Server connected",      "success")
         console:log("Checking for changes",  "info")
@@ -42,10 +42,9 @@ local LEVEL_ICON = {
 ---------------------------------------------------------------------------
 -- Constructor
 ---------------------------------------------------------------------------
-function Console.new(pluginInstance: Plugin, toolbar: PluginToolbar, settings)
+function Console.new(pluginInstance: Plugin, settings)
     local self      = setmetatable({}, Console)
     self._plugin    = pluginInstance
-    self._toolbar   = toolbar
     self._settings  = settings
     self._labels    = {} :: { TextLabel }
     self._nextOrder = 1
@@ -53,7 +52,6 @@ function Console.new(pluginInstance: Plugin, toolbar: PluginToolbar, settings)
     self._scroll    = nil
 
     self:_createWidget()
-    self:_createButton()
     return self
 end
 
@@ -129,19 +127,6 @@ function Console:_createWidget()
     pad.PaddingTop    = UDim.new(0, 2)
     pad.PaddingBottom = UDim.new(0, 2)
     pad.Parent        = scroll
-end
-
----------------------------------------------------------------------------
--- Add a Console toolbar button
----------------------------------------------------------------------------
-function Console:_createButton()
-    local btn = self._toolbar:CreateButton(
-        "SilkDiff_Console", "Open SilkDiff Console",
-        "rbxassetid://6031280882", "Console"
-    )
-    btn.Click:Connect(function()
-        self._widget.Enabled = not self._widget.Enabled
-    end)
 end
 
 ---------------------------------------------------------------------------
@@ -251,6 +236,12 @@ end
 function Console:open()
     if self._widget then
         self._widget.Enabled = true
+    end
+end
+
+function Console:toggle()
+    if self._widget then
+        self._widget.Enabled = not self._widget.Enabled
     end
 end
 

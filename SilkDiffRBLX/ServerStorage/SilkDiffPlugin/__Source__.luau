@@ -54,9 +54,9 @@ local httpClient      = HttpClient.new(settings)
 local serializer      = Serializer.new(settings)
 local diffEngine      = DiffEngine.new()
 local instanceWatcher = InstanceWatcher.new()
-local ui              = UI.new(plugin, toolbar, settings)
+local console         = Console.new(plugin, settings)
+local ui              = UI.new(plugin, toolbar, settings, console)
 local popup           = Popup.new(plugin)
-local console         = Console.new(plugin, toolbar, settings)
 
 -- Now that console exists, give HttpClient a reference for debug logging
 httpClient:setConsole(console)
