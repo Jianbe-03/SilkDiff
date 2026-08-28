@@ -268,7 +268,7 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
     def _handle_diff(self):
         """POST /api/diff - compare Roblox data against local files.
 
-        With ``body.full`` set (Force Push), the entire Roblox state is
+        With ``body.full`` set (Watchless Push), the entire Roblox state is
         sent and any local instance missing from it is reported as removed.
         """
         try:
@@ -314,7 +314,7 @@ class SilkDiffHandler(BaseHTTPRequestHandler):
                 if diff:
                     diffs.append(diff)
 
-            # Full comparison (Force Push): any local instance not present
+            # Full comparison (Watchless Push): any local instance not present
             # in the Roblox state has been deleted → report as removed.
             if full:
                 local_map: dict = {}

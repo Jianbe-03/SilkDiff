@@ -299,10 +299,10 @@ function UI:_createToolbarButtons()
 
     task.wait()
 
-    -- Force Push (full state comparison, no watcher needed)
+    -- Watchless Push (full state comparison, no watcher needed)
     self._buttons.forcePush = self._toolbar:CreateButton(
-        "SilkDiff_ForcePush", "Force Push: compare entire Roblox state against local files and force a push.",
-        "rbxassetid://6034328955", "Force Push"
+        "SilkDiff_ForcePush", "Watchless Push: compare entire Roblox state against local files without using the watcher.",
+        "rbxassetid://6034328955", "Watchless Push"
     )
     self._buttons.forcePush.Click:Connect(function()
         self.onForcePush:Fire()
@@ -555,9 +555,10 @@ function UI:_createHelpWidget()
 
     actionRow("Push", "Sends your changed instances from Roblox to the local files. " ..
         "You review the diff in the viewer and only the staged changes are written to disk.")
-    actionRow("Force Push", "Compares the ENTIRE Roblox state against your local files and " ..
-        "shows every difference. Use this when the watcher may have missed changes (e.g. " ..
-        "changes made while Studio was closed, or changes made by another team member while you were offline). It's a full comparison, no watcher needed.")
+    actionRow("Watchless Push", "Compares the ENTIRE Roblox state against your local files and " ..
+        "shows every difference, without using the watcher. Use this when the watcher may " ..
+        "have missed changes (e.g. changes made while Studio was closed, or changes made " ..
+        "by another team member while you were offline). It's a full comparison.")
     actionRow("Pull", "Applies local file changes back into Roblox. The diff shows what will " ..
         "change in Studio, and only the staged changes are applied to your instances.")
     actionRow("Export", "Wipes your entire local tree and rebuilds it from the current Roblox " ..
