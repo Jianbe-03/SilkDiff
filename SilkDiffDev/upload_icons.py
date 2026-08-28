@@ -78,9 +78,12 @@ def svg_to_png(svg_path: Path, size: int) -> bytes:
 # ── Open Cloud upload ───────────────────────────────────────────
 
 def upload_png(api_key: str, creator: dict, png_bytes: bytes, name: str) -> int:
-    """Upload a PNG as a Decal asset. Returns the numeric asset id."""
+    """Upload a PNG as an Image asset. Returns its usable numeric asset ID."""
     request_payload = {
-        "assetType": "Decal",
+        # Toolbar buttons need the image-content asset ID. Uploading a Decal
+        # returns the Decal/Creator Store asset ID instead, which cannot be
+        # used as the button image.
+        "assetType": "Image",
         "displayName": name,
         "creationContext": {"creator": creator},
     }

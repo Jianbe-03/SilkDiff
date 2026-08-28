@@ -125,6 +125,7 @@ silk uninstall
 SilkDiff/
 ├── install.sh                       # One-liner installer for macOS / Linux
 ├── install.ps1                      # One-liner installer for Windows
+├── install-local.sh                 # Local development launcher installer
 ├── .github/
 │   └── workflows/
 │       └── release.yml              # CI: builds & releases binaries on tag push
@@ -140,7 +141,14 @@ SilkDiff/
 │               ├── Serializer/      # Converts instances to JSON
 │               ├── HttpClient/      # HTTP communication with server
 │               ├── DiffEngine/      # Compares instance states
-│               └── UI/              # Toolbar, Settings panel, Diff viewer
+│               ├── Popup/           # Confirmation and notification dialogs
+│               ├── Console/         # Docked SilkDiff log console
+│               └── UI/              # Toolbar, Settings panel, and Diff viewer
+│
+├── SilkDiffDev/                     # Development assets and icon uploader
+│   ├── icons/                        # SVG toolbar icon sources
+│   ├── silkdiff.svg                  # SilkDiff logo source
+│   └── upload_icons.py               # Converts and uploads toolbar icons
 │
 └── SilkDiffServer/                  # Python source (compiled into the binary)
     ├── main.py                      # CLI entry point

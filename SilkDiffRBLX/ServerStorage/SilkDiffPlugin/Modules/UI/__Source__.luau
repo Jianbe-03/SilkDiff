@@ -29,12 +29,12 @@ local Signal = require(script.Parent:WaitForChild("Signal"))
 -- icons. The keys match the SVG file stems in SilkDiffDev/icons/.
 ---------------------------------------------------------------------------
 local ICONS = {
-    console = "rbxassetid://138134964774396",
-    export = "rbxassetid://83429520231318",
-    pull = "rbxassetid://116145337774967",
-    push = "rbxassetid://77290346356349",
-    settings = "rbxassetid://134375546347315",
-    watchlessPush = "rbxassetid://125663871902638",
+    console = "rbxassetid://117621095296978",
+    export = "rbxassetid://124988477955048",
+    pull = "rbxassetid://135487880337284",
+    push = "rbxassetid://73229614224915",
+    settings = "rbxassetid://84924100483478",
+    watchlessPush = "rbxassetid://84896167134515",
 }
 
 ---------------------------------------------------------------------------

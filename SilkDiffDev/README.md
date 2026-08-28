@@ -50,6 +50,7 @@ The script prints a Lua snippet like this:
 
 ```lua
 local ICONS = {
+    console = "rbxassetid://123456788",
     push = "rbxassetid://123456789",
     watchlessPush = "rbxassetid://123456790",
     pull = "rbxassetid://123456791",
@@ -61,7 +62,8 @@ local ICONS = {
 Paste those IDs into
 `SilkDiffRBLX/ServerStorage/SilkDiffPlugin/Modules/UI/__Source__.luau`
 in the `_createToolbarButtons()` calls (the third argument of each
-`CreateButton(...)`).
+`CreateButton(...)`). The uploader creates `Image` assets, so these returned
+IDs can be used directly as `rbxassetid://...` values.
 
 > Note: Roblox does **not** support SVG uploads — only PNG/JPG/BMP. That's why
 > the SVGs live here and get rasterized to PNGs before uploading. Also, image
