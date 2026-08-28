@@ -23,6 +23,20 @@
 local Signal = require(script.Parent:WaitForChild("Signal"))
 
 ---------------------------------------------------------------------------
+-- Toolbar icon asset IDs.
+--
+-- Paste the output of SilkDiffDev/upload_icons.py here to swap in new
+-- icons. The keys match the SVG file stems in SilkDiffDev/icons/.
+---------------------------------------------------------------------------
+local ICONS = {
+    push          = "rbxassetid://6031280882",
+    watchlessPush = "rbxassetid://6034328955",
+    pull          = "rbxassetid://6031280882",
+    export        = "rbxassetid://6034328955",
+    settings      = "rbxassetid://6031280882",
+}
+
+---------------------------------------------------------------------------
 -- Line-by-line diff via Longest Common Subsequence
 -- Returns a flat list of { line: string, status: "added"|"removed"|"unchanged" }
 ---------------------------------------------------------------------------
@@ -291,7 +305,7 @@ function UI:_createToolbarButtons()
     -- Push
     self._buttons.push = self._toolbar:CreateButton(
         "SilkDiff_Push", "Push watched changes to local machine",
-        "rbxassetid://6031280882", "Push"
+        ICONS.push, "Push"
     )
     self._buttons.push.Click:Connect(function()
         self.onPush:Fire()
@@ -302,7 +316,7 @@ function UI:_createToolbarButtons()
     -- Watchless Push (full state comparison, no watcher needed)
     self._buttons.watchlessPush = self._toolbar:CreateButton(
         "SilkDiff_WatchlessPush", "Watchless Push: compare entire Roblox state against local files without using the watcher.",
-        "rbxassetid://6034328955", "Watchless Push"
+        ICONS.watchlessPush, "Watchless Push"
     )
     self._buttons.watchlessPush.Click:Connect(function()
         self.onWatchlessPush:Fire()
@@ -313,7 +327,7 @@ function UI:_createToolbarButtons()
     -- Pull
     self._buttons.pull = self._toolbar:CreateButton(
         "SilkDiff_Pull", "Pull changes from local machine",
-        "rbxassetid://6031280882", "Pull"
+        ICONS.pull, "Pull"
     )
     self._buttons.pull.Click:Connect(function()
         self.onPull:Fire()
@@ -324,7 +338,7 @@ function UI:_createToolbarButtons()
     -- Export (full game → local)
     self._buttons.export = self._toolbar:CreateButton(
         "SilkDiff_Export", "Export entire game to local machine",
-        "rbxassetid://6034328955", "Export"
+        ICONS.export, "Export"
     )
     self._buttons.export.Click:Connect(function()
         self.onExport:Fire()
@@ -335,7 +349,7 @@ function UI:_createToolbarButtons()
     -- Settings
     self._buttons.settings = self._toolbar:CreateButton(
         "SilkDiff_Settings", "Open SilkDiff settings",
-        "rbxassetid://6031280882", "Settings"
+        ICONS.settings, "Settings"
     )
     self._buttons.settings.Click:Connect(function()
         local w = self._widgets.settings
@@ -1414,7 +1428,7 @@ end
 ---------------------------------------------------------------------------
 function UI:destroy()
     self.onPush:Destroy()
-    self.onForcePush:Destroy()
+    self.onWatchlessPush:Destroy()
     self.onPull:Destroy()
     self.onExport:Destroy()
 
