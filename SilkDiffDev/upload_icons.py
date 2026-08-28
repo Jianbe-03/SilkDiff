@@ -38,7 +38,7 @@ LUA_KEYS = {
 
 try:
     import cairosvg
-except ImportError:
+except Exception:
     cairosvg = None
 
 
